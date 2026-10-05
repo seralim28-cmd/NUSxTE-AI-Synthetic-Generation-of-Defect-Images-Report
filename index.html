@@ -1,0 +1,928 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Synthetic Defect Generation | Project Report</title>
+<meta name="description" content="Synthetic defect image generation for data-scarce manufacturing inspection, using an optimised SDXL-LoRA pipeline and an agentic tuning assistant. NUS × TE Connectivity FYP.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f7f8fa; --surface:#ffffff; --surface-2:#f0f2f5; --border:#e2e5ea;
+    --text:#1a1d23; --muted:#5d6573; --faint:#8a92a0;
+    --accent:#e8620c; --accent-soft:#fdeee3; --accent-2:#1f5fae; --accent-2-soft:#e6eef9;
+    --ok:#1f8a4c; --warn:#b7791f;
+    --nav-h:56px; --side-w:270px; --radius:10px;
+    --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+    --sans:'Inter',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#111317; --surface:#181b21; --surface-2:#20242c; --border:#2c313b;
+      --text:#e7e9ee; --muted:#a3abb8; --faint:#737b88;
+      --accent:#ff8a3d; --accent-soft:#3a2416; --accent-2:#6ea4ec; --accent-2-soft:#1b2a40;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#111317; --surface:#181b21; --surface-2:#20242c; --border:#2c313b;
+    --text:#e7e9ee; --muted:#a3abb8; --faint:#737b88;
+    --accent:#ff8a3d; --accent-soft:#3a2416; --accent-2:#6ea4ec; --accent-2-soft:#1b2a40;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth;scroll-padding-top:calc(var(--nav-h) + 20px)}
+  body{margin:0;background:var(--bg);color:var(--text);font:15.5px/1.7 var(--sans);-webkit-font-smoothing:antialiased}
+  a{color:var(--accent-2);text-decoration:none} a:hover{text-decoration:underline}
+  code{font:13.5px var(--mono);background:var(--surface-2);padding:1px 6px;border-radius:5px}
+
+  /* ---------- Top nav ---------- */
+  .topnav{position:fixed;inset:0 0 auto 0;height:var(--nav-h);z-index:50;display:flex;align-items:center;gap:20px;
+    padding:0 20px;background:color-mix(in srgb,var(--surface) 88%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--border)}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:-.01em;color:var(--text)}
+  .brand-mark{width:28px;height:28px;border-radius:7px;background:var(--accent);display:grid;place-items:center;color:#fff;font:600 12px var(--mono)}
+  .topnav nav{display:flex;gap:4px;margin-left:auto}
+  .topnav nav a{color:var(--muted);font-size:14px;font-weight:500;padding:6px 12px;border-radius:7px}
+  .topnav nav a:hover,.topnav nav a.active{color:var(--text);background:var(--surface-2);text-decoration:none}
+  .icon-btn{border:1px solid var(--border);background:var(--surface);color:var(--text);width:34px;height:34px;border-radius:8px;cursor:pointer;display:grid;place-items:center}
+  #menuBtn{display:none}
+
+  /* ---------- Layout ---------- */
+  .layout{display:grid;grid-template-columns:var(--side-w) minmax(0,1fr);max-width:1280px;margin:0 auto;padding-top:var(--nav-h)}
+  .sidebar{position:sticky;top:var(--nav-h);height:calc(100vh - var(--nav-h));overflow-y:auto;padding:28px 18px 40px 20px;border-right:1px solid var(--border)}
+  .sidebar h4{margin:0 0 12px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
+  .toc{list-style:none;margin:0;padding:0}
+  .toc li a{display:flex;gap:10px;padding:6px 10px;border-radius:7px;color:var(--muted);font-size:14px;line-height:1.4}
+  .toc li a .n{font:12px var(--mono);color:var(--faint);padding-top:1px;min-width:20px}
+  .toc li a:hover{background:var(--surface-2);text-decoration:none;color:var(--text)}
+  .toc li a.active{background:var(--accent-soft);color:var(--text);font-weight:600}
+  .toc li a.active .n{color:var(--accent)}
+  .toc .sub{list-style:none;padding:0 0 4px 30px;margin:0;display:none}
+  .toc li.open .sub{display:block}
+  .toc .sub a{font-size:13px;padding:4px 10px}
+  .progress{height:3px;background:var(--border);border-radius:3px;margin:18px 10px 0;overflow:hidden}
+  .progress span{display:block;height:100%;width:0;background:var(--accent);transition:width .1s}
+
+  main{padding:40px 56px 100px;min-width:0}
+  .hero{padding:24px 0 36px;border-bottom:1px solid var(--border);margin-bottom:12px}
+  .eyebrow{font:500 12px var(--mono);color:var(--accent);letter-spacing:.06em;text-transform:uppercase}
+  .hero h1{font-size:clamp(28px,4vw,40px);line-height:1.15;letter-spacing:-.025em;margin:10px 0 14px;max-width:820px}
+  .hero p.lead{color:var(--muted);font-size:17px;max-width:760px;margin:0 0 22px}
+  .meta{display:flex;flex-wrap:wrap;gap:8px}
+  .chip{font-size:12.5px;padding:4px 10px;border:1px solid var(--border);border-radius:999px;background:var(--surface);color:var(--muted)}
+  .chip b{color:var(--text);font-weight:600}
+
+  section.sec{padding:44px 0 8px;border-bottom:1px solid var(--border)}
+  section.sec:last-of-type{border-bottom:0}
+  .sec-head{display:flex;align-items:baseline;gap:14px;margin-bottom:6px}
+  .sec-num{font:600 14px var(--mono);color:var(--accent)}
+  .sec h2{font-size:26px;letter-spacing:-.02em;margin:0}
+  .sec h3{font-size:18px;margin:32px 0 8px;letter-spacing:-.01em}
+  .sec h3 .sub-num{font:500 13px var(--mono);color:var(--faint);margin-right:8px}
+  .sec p{max-width:800px}
+
+  /* ---------- Components ---------- */
+  .callout{border:1px solid var(--border);border-left:3px solid var(--accent-2);background:var(--accent-2-soft);padding:14px 18px;border-radius:8px;margin:18px 0;max-width:800px}
+  .callout.todo{border-left-color:var(--warn);background:color-mix(in srgb,var(--warn) 10%,var(--surface))}
+  .callout strong{display:block;margin-bottom:2px}
+  .grid{display:grid;gap:14px;margin:18px 0}
+  .g2{grid-template-columns:repeat(2,minmax(0,1fr))} .g3{grid-template-columns:repeat(3,minmax(0,1fr))} .g4{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px}
+  .card h5{margin:0 0 6px;font-size:14.5px}
+  .card p{margin:0;font-size:14px;color:var(--muted)}
+  .stat .v{font:600 26px var(--mono);letter-spacing:-.02em}
+  .stat .l{font-size:12.5px;color:var(--muted)}
+
+  .table-wrap{overflow-x:auto;margin:18px 0;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface)}
+  table{border-collapse:collapse;width:100%;font-size:14px}
+  th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--border);vertical-align:top}
+  th{background:var(--surface-2);font-weight:600;font-size:12.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+  tr:last-child td{border-bottom:0}
+  td.num{font-family:var(--mono);text-align:right}
+  .caption{font-size:13px;color:var(--muted);margin:-8px 0 18px}
+  .caption b{color:var(--text)}
+
+  figure{margin:22px 0}
+  figure .frame{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;cursor:zoom-in}
+  figure img{display:block;width:100%;height:auto}
+  figcaption{font-size:13px;color:var(--muted);margin-top:8px}
+  figcaption b{color:var(--text)}
+  .ph{aspect-ratio:16/8;display:grid;place-items:center;text-align:center;padding:20px;color:var(--faint);font:13px var(--mono);
+    overflow-wrap:anywhere;background:repeating-linear-gradient(45deg,var(--surface),var(--surface) 10px,var(--surface-2) 10px,var(--surface-2) 20px)}
+  .ph.sq{aspect-ratio:1/1}
+
+  /* Tabs */
+  .tabs{display:flex;flex-wrap:wrap;gap:6px;margin:18px 0 0}
+  .tabs button{font:500 13.5px var(--sans);border:1px solid var(--border);background:var(--surface);color:var(--muted);padding:7px 14px;border-radius:8px;cursor:pointer}
+  .tabs button[aria-selected="true"]{background:var(--text);color:var(--bg);border-color:var(--text)}
+  .tab-panel{display:none;margin-top:14px} .tab-panel.active{display:block}
+
+  /* Agent loop diagram */
+  .loop{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin:18px 0}
+  .loop svg{width:100%;height:auto;display:block}
+  .loop .node rect{fill:var(--surface-2);stroke:var(--border);stroke-width:1.5;transition:all .25s}
+  .loop .node text{fill:var(--text);font:600 13px var(--sans)}
+  .loop .node text.s{fill:var(--muted);font:400 11px var(--sans)}
+  .loop .node.on rect{fill:var(--accent-soft);stroke:var(--accent);stroke-width:2}
+  .loop .edge{stroke:var(--faint);stroke-width:1.5;fill:none}
+  .loop .edge.on{stroke:var(--accent);stroke-width:2}
+  .loop-ctrl{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:12px}
+  .btn{font:500 13.5px var(--sans);border:1px solid var(--border);background:var(--surface);color:var(--text);padding:7px 14px;border-radius:8px;cursor:pointer}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .loop-desc{font-size:14px;color:var(--muted);flex:1;min-width:220px}
+  .loop-desc b{color:var(--text)}
+
+  /* Variation explorer */
+  .explorer{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:18px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin:18px 0}
+  .ctrl{margin-bottom:16px}
+  .ctrl label{display:flex;justify-content:space-between;font-size:13px;font-weight:600;margin-bottom:6px}
+  .ctrl label span{font:400 12.5px var(--mono);color:var(--accent)}
+  .ctrl input[type=range]{width:100%;accent-color:var(--accent)}
+  .ctrl select{width:100%;padding:7px 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);font:14px var(--sans)}
+  .prompt-box{font:12.5px/1.6 var(--mono);background:var(--surface-2);border-radius:8px;padding:10px 12px;color:var(--muted);word-break:break-word}
+  .explorer .ph{aspect-ratio:1/1;border-radius:8px;border:1px solid var(--border)}
+
+  /* Chart */
+  .chart{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin:18px 0}
+  .bar-row{display:grid;grid-template-columns:150px 1fr 60px;align-items:center;gap:12px;margin:8px 0;font-size:13.5px}
+  .bar-track{height:14px;background:var(--surface-2);border-radius:4px;overflow:hidden}
+  .bar{height:100%;background:var(--accent-2);border-radius:4px;transition:width .6s}
+  .bar-row .val{font:12.5px var(--mono);text-align:right;color:var(--muted)}
+
+  .video{aspect-ratio:16/9;border-radius:var(--radius);overflow:hidden;border:1px solid var(--border);background:var(--surface-2)}
+  .video iframe{width:100%;height:100%;border:0}
+
+  ol.refs{padding-left:22px;font-size:14px} ol.refs li{margin:6px 0}
+  #lof{font-size:14px;padding-left:0;list-style:none} #lof li{margin:6px 0} #lof b{font-family:var(--mono);font-weight:500;color:var(--accent);margin-right:6px}
+
+  footer{border-top:1px solid var(--border);padding:24px 0 0;margin-top:40px;font-size:13px;color:var(--faint)}
+
+  /* Timeline */
+  .sem-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:18px 0 10px}
+  .gantt-wrap{overflow-x:auto;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin:0 0 18px}
+  .gantt{position:relative;min-width:760px;padding:0 0 12px}
+  .g-row{display:grid;grid-template-columns:170px 1fr;align-items:center;min-height:40px;border-bottom:1px dashed var(--border)}
+  .g-row:last-child{border-bottom:0}
+  .g-label{font-size:13px;font-weight:600;padding:0 14px;line-height:1.3}
+  .g-track{position:relative;height:40px}
+  .g-head .g-track{height:auto;display:grid;grid-template-columns:repeat(10,1fr)}
+  .g-sem{font:600 11px var(--mono);text-transform:uppercase;letter-spacing:.08em;text-align:center;padding:10px 0 4px}
+  .g-sem.s1{grid-column:1/6;color:var(--accent-2);background:var(--accent-2-soft)}
+  .g-sem.s2{grid-column:6/11;color:var(--accent);background:var(--accent-soft)}
+  .g-month{font:12px var(--mono);color:var(--faint);text-align:center;padding:6px 0;border-left:1px solid var(--border)}
+  .g-grid{position:absolute;inset:0 0 0 170px;display:grid;grid-template-columns:repeat(10,1fr);pointer-events:none}
+  .g-grid span{border-left:1px solid var(--border)}
+  .g-grid span:nth-child(6){border-left:2px solid var(--text);opacity:.35}
+  .g-bar{position:absolute;top:9px;height:22px;border-radius:6px;cursor:pointer;border:0;padding:0 8px;font:500 11.5px var(--sans);color:#fff;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:left;transition:transform .15s,box-shadow .15s}
+  .g-bar.s1{background:var(--accent-2)} .g-bar.s2{background:var(--accent)}
+  .g-bar.planned{opacity:.55}
+  .g-bar:hover,.g-bar.sel{transform:translateY(-1px);box-shadow:0 0 0 2px var(--surface),0 0 0 4px var(--text);opacity:1}
+  .g-ms{position:absolute;top:12px;width:14px;height:14px;transform:translateX(-50%) rotate(45deg);background:var(--text);border:0;cursor:pointer;padding:0}
+  .g-ms.sel{box-shadow:0 0 0 3px var(--accent)}
+  .g-today{position:absolute;top:0;bottom:0;width:2px;background:var(--ok);z-index:2;pointer-events:none}
+  .g-today::after{content:"Today";position:absolute;bottom:14px;left:5px;font:600 10.5px var(--mono);color:var(--ok)}
+  .g-legend{display:flex;flex-wrap:wrap;gap:16px;font-size:12.5px;color:var(--muted);padding:10px 14px 0}
+  .g-legend i{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-1px;margin-right:6px}
+  .g-detail{background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--accent-2);border-radius:8px;padding:14px 18px;margin:0 0 18px;max-width:800px}
+  .g-detail h5{margin:0 0 4px;font-size:15px}
+  .g-detail .when{font:12.5px var(--mono);color:var(--faint);margin-bottom:6px}
+  .g-detail ul{margin:6px 0 0;padding-left:20px;font-size:14px;color:var(--muted)}
+  .sem-cols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:18px 0}
+  .sem-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;border-top:3px solid var(--accent-2)}
+  .sem-card.s2{border-top-color:var(--accent)}
+  .sem-card h5{margin:0 0 2px;font-size:15px}
+  .sem-card .when{font:12.5px var(--mono);color:var(--faint)}
+  .sem-card ul{margin:10px 0 0;padding-left:20px;font-size:14px;color:var(--muted)}
+  @media (max-width:560px){.sem-cols{grid-template-columns:1fr}}
+
+  /* Lightbox */
+  .lightbox{position:fixed;inset:0;background:rgba(0,0,0,.85);display:none;place-items:center;z-index:100;padding:30px;cursor:zoom-out}
+  .lightbox.on{display:grid}
+  .lightbox img{max-width:95vw;max-height:90vh;border-radius:8px}
+
+  .to-top{position:fixed;right:20px;bottom:20px;z-index:40;opacity:0;pointer-events:none;transition:opacity .2s}
+  .to-top.on{opacity:1;pointer-events:auto}
+
+  /* ---------- Responsive ---------- */
+  @media (max-width:980px){
+    .layout{grid-template-columns:1fr}
+    .sidebar{position:fixed;left:0;top:var(--nav-h);width:min(300px,85vw);background:var(--surface);z-index:45;transform:translateX(-100%);transition:transform .25s;box-shadow:0 10px 30px rgba(0,0,0,.15)}
+    .sidebar.open{transform:none}
+    #menuBtn{display:grid}
+    main{padding:24px 16px 80px}
+    .topnav nav{display:none}
+    .g3,.g4{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .explorer{grid-template-columns:minmax(0,1fr)}
+  }
+  @media (max-width:560px){
+    .g2,.g3,.g4{grid-template-columns:1fr}
+    .bar-row{grid-template-columns:100px 1fr 48px}
+  }
+</style>
+</head>
+<body>
+
+<header class="topnav">
+  <button class="icon-btn" id="menuBtn" aria-label="Toggle contents">☰</button>
+  <a class="brand" href="#top"><span class="brand-mark">SD</span>Synthetic Defect Generation</a>
+  <nav>
+    <a href="#top" class="active">Report</a>
+    <a href="#section-7">Explorer</a>
+    <a href="#section-9">App</a>
+    <a href="#section-timeline">Timeline</a>
+    <a href="#section-13">Team</a>
+  </nav>
+  <button class="icon-btn" id="themeBtn" aria-label="Toggle theme" title="Toggle theme">◐</button>
+</header>
+
+<div class="layout">
+  <aside class="sidebar" id="sidebar">
+    <h4>Contents</h4>
+    <ul class="toc" id="toc"></ul>
+    <div class="progress"><span id="progress"></span></div>
+  </aside>
+
+  <main id="top">
+    <div class="hero">
+      <div class="eyebrow">NUS EDIC Final Year Project · AY2026/27</div>
+      <h1>AI Synthetic Generation of Defect Images</h1>
+      <p class="lead">Synthetic defect image generation to address data scarcity in AI-based manufacturing inspection. Uses an optimised SDXL-LoRA pipeline, with an agentic assistant that automates complex hyperparameter tuning so non-specialist users can produce high-quality defect images.</p>
+      <div class="meta">
+        <span class="chip">Industry partner <b>TE Connectivity</b></span>
+        <span class="chip">Supervisor <b>Dr Tang Kok Zuea</b></span>
+        <span class="chip">Model <b>SDXL + LoRA</b></span>
+        <span class="chip">Status <b>In progress</b></span>
+        <span class="chip">Last updated <b id="updated">Oct 2026</b></span>
+      </div>
+    </div>
+
+    <!-- ===================== 01 ===================== -->
+    <section class="sec" id="section-1" data-title="Overview">
+      <div class="sec-head"><span class="sec-num">01</span><h2>Overview</h2></div>
+      <p>AI-based visual inspection systems need large, balanced datasets to perform reliably. On a production line, however, the most critical defects are often the rarest. A few examples of a failure mode are not enough to train a robust classifier, and detection accuracy suffers exactly where it matters most.</p>
+      <p>This project generates realistic synthetic defect images to fill those gaps. It builds on an existing SDXL-LoRA generation workflow and makes it both <b>better</b> (higher-fidelity, more controllable, validated outputs) and <b>easier to use</b> (an agentic assistant that handles hyperparameter tuning, so engineers on the line do not need deep generative-AI expertise).</p>
+
+      <h3 id="s1-1"><span class="sub-num">1.1</span>Objectives</h3>
+      <div class="grid g3">
+        <div class="card"><h5>1 · Model optimisation</h5><p>Optimise the current SDXL-LoRA model and test newer text-to-image and image-to-image models.</p></div>
+        <div class="card"><h5>2 · Dataset review</h5><p>Check uploads for sufficiency, duplicates and consistency; turn brief notes into visually specific captions.</p></div>
+        <div class="card"><h5>3 · Agent-assisted tuning</h5><p>Recommend training settings within a compute budget (AgentHPO: Recommender, Evaluator, Decision agents).</p></div>
+        <div class="card"><h5>4 · Improved evaluation</h5><p>Batch and per-image scoring for realism, diversity and originality; flag overfitting and memorisation.</p></div>
+        <div class="card"><h5>5 · Downstream validation</h5><p>Does the inspection model improve? Real-only vs previous workflow vs agent-optimised, on held-out real defects.</p></div>
+        <div class="card"><h5>6 · Reporting</h5><p>Per-run experiment report with a keep/reject recommendation, integrated into the AITK web app.</p></div>
+      </div>
+      <div class="callout"><strong>Assistive, not autonomous</strong>The agent recommends and orchestrates. Training runs deterministically, every action stays within explicit budgets (max runs, GPU hours, allowed parameter ranges) with full logging, and a human keeps final approval.</div>
+
+      <h3 id="s1-2"><span class="sub-num">1.2</span>Key results at a glance</h3>
+      <div class="grid g4">
+        <div class="card stat"><div class="v" data-placeholder>—</div><div class="l">Best FID</div></div>
+        <div class="card stat"><div class="v" data-placeholder>—</div><div class="l">Rare-defect recall</div></div>
+        <div class="card stat"><div class="v" data-placeholder>—</div><div class="l">False-positive rate</div></div>
+        <div class="card stat"><div class="v" data-placeholder>—</div><div class="l">HPO trials to best config</div></div>
+      </div>
+      <div class="callout todo"><strong>To fill in</strong>Replace the dashes above once results are available. Placeholders throughout this page are marked with a striped background or "—".</div>
+    </section>
+
+    <!-- ===================== 02 ===================== -->
+    <section class="sec" id="section-2" data-title="Background & Prior Work">
+      <div class="sec-head"><span class="sec-num">02</span><h2>Background &amp; Prior Work</h2></div>
+      <p>A previous UROP team (CDE4301, AY2025/26 Sem 1) compared several generative approaches on TE Connectivity solder-pin welding images and built the AITK toolkit, a guided web app for training and generation. This project starts from their conclusions.</p>
+
+      <h3 id="s2-1"><span class="sub-num">2.1</span>Model selection</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Approach</th><th>Outcome</th><th>Verdict</th></tr></thead>
+        <tbody>
+          <tr><td>VAE variants (β-VAE, perceptual + TV loss)</td><td>Controllable but low-resolution and blurry</td><td>Rejected</td></tr>
+          <tr><td>Qwen-Image / Qwen-Image-Edit</td><td>Good quality, but ~100 GB VRAM to train</td><td>Not viable locally</td></tr>
+          <tr><td>Stable Diffusion 1.5 + LoRA</td><td>Artifacts, outputs unrelated to defects</td><td>Rejected</td></tr>
+          <tr><td>Stable Diffusion 3.5 Medium + LoRA</td><td>Blurry, indistinct defects</td><td>Rejected</td></tr>
+          <tr><td><b>SDXL Base 1.0 + LoRA</b></td><td>Highest fidelity; only model to improve downstream accuracy</td><td><b>Adopted</b></td></tr>
+        </tbody>
+      </table></div>
+      <p class="caption"><b>Table 1.</b> Generative models evaluated in prior work.</p>
+      <p>SDXL then went through two optimisation rounds. Natural-language prompts generated by a local Llama 7B model lowered FID but had mixed effects on accuracy. Training one LoRA per defect class ("individual") beat a single shared model on fidelity, FID and accuracy for clear-cut classes; for example, NG-No Solder accuracy rose from 73% to 93%. Individual training was adopted. The team wrapped the pipeline in the AITK web app: setup → training → generation → output.</p>
+
+      <h3 id="s2-2"><span class="sub-num">2.2</span>Gaps this project addresses</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Gap in prior workflow</th><th>This project</th></tr></thead>
+        <tbody>
+          <tr><td>Results depend on expert judgement: defect descriptions, training duration, settings, checkpoint, which images to keep</td><td>Dataset review and captioning (Section 04); AgentHPO tuning (Section 06)</td></tr>
+          <tr><td>SDXL base outputs can look over-polished and synthetic</td><td>Alternative base models and image-to-image generation (Section 05)</td></tr>
+          <tr><td>No automated batch or per-image quality scoring</td><td>FID, LPIPS, diversity and memorisation scoring (Section 08)</td></tr>
+          <tr><td>Realism never validated against downstream inspection performance</td><td>Three-way downstream comparison (Section 08)</td></tr>
+          <tr><td>No record of why a run was kept or rejected</td><td>Per-run experiment report (Section 09)</td></tr>
+        </tbody>
+      </table></div>
+      <p class="caption"><b>Table 2.</b> Mapping prior limitations to project deliverables.</p>
+    </section>
+
+    <!-- ===================== 03 ===================== -->
+    <section class="sec" id="section-3" data-title="Defect Taxonomy">
+      <div class="sec-head"><span class="sec-num">03</span><h2>Defect Taxonomy</h2></div>
+      <p>Defects are grouped by their physical failure mechanism, not just their visual appearance. Grounding generation in how a defect actually forms helps keep synthetic images physically plausible.</p>
+
+      <div class="tabs" role="tablist" data-tabs="taxonomy">
+        <button role="tab" aria-selected="true" data-tab="ok">OK</button>
+        <button role="tab" aria-selected="false" data-tab="single">NG-Single</button>
+        <button role="tab" aria-selected="false" data-tab="nosolder">NG-No Solder</button>
+        <button role="tab" aria-selected="false" data-tab="notenough">NG-Not Enough Solder</button>
+        <button role="tab" aria-selected="false" data-tab="misaligned">NG-Misaligned</button>
+      </div>
+      <div class="tab-panel active" data-panel="ok">
+        <div class="grid g2">
+          <figure data-fig="Real sample — OK weld"><div class="frame"><div class="ph sq">images/real_ok.png</div></div><figcaption>Accepted weld (real)</figcaption></figure>
+          <div class="card"><h5>OK: accepted weld</h5><p><b>Appearance:</b> both pins present, even solder fillet, correct alignment.<br><b>Mechanism:</b> n/a (reference class).<br><b>Real samples available:</b> —</p></div>
+        </div>
+      </div>
+      <div class="tab-panel" data-panel="single">
+        <div class="grid g2">
+          <figure data-fig="Real sample — NG-Single"><div class="frame"><div class="ph sq">images/real_single.png</div></div><figcaption>Single pin present (real)</figcaption></figure>
+          <div class="card"><h5>NG-Single</h5><p><b>Appearance:</b> only one pin present in the joint.<br><b>Mechanism:</b> — (e.g. pin feed or insertion failure)<br><b>Real samples available:</b> —</p></div>
+        </div>
+      </div>
+      <div class="tab-panel" data-panel="nosolder">
+        <div class="grid g2">
+          <figure data-fig="Real sample — NG-No Solder"><div class="frame"><div class="ph sq">images/real_nosolder.png</div></div><figcaption>Absence of solder (real)</figcaption></figure>
+          <div class="card"><h5>NG-No Solder</h5><p><b>Appearance:</b> bare pins, no solder deposit.<br><b>Mechanism:</b> — (e.g. dispensing failure, non-wetting)<br><b>Real samples available:</b> —</p></div>
+        </div>
+      </div>
+      <div class="tab-panel" data-panel="notenough">
+        <div class="grid g2">
+          <figure data-fig="Real sample — NG-Not Enough Solder"><div class="frame"><div class="ph sq">images/real_notenough.png</div></div><figcaption>Insufficient solder (real)</figcaption></figure>
+          <div class="card"><h5>NG-Not Enough Solder</h5><p><b>Appearance:</b> thin or incomplete fillet.<br><b>Mechanism:</b> — (e.g. low volume, poor wetting, thermal profile)<br><b>Real samples available:</b> —</p></div>
+        </div>
+      </div>
+      <div class="tab-panel" data-panel="misaligned">
+        <div class="grid g2">
+          <figure data-fig="Real sample — NG-Misaligned"><div class="frame"><div class="ph sq">images/real_misaligned.png</div></div><figcaption>Misaligned pins (real)</figcaption></figure>
+          <div class="card"><h5>NG-Misaligned</h5><p><b>Appearance:</b> pins offset or not parallel.<br><b>Mechanism:</b> — (e.g. fixture tolerance, handling)<br><b>Real samples available:</b> —</p></div>
+        </div>
+      </div>
+
+      <h3 id="s3-1"><span class="sub-num">3.1</span>Dataset summary</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Class</th><th style="text-align:right">Real (train)</th><th style="text-align:right">Real (test)</th><th style="text-align:right">Synthetic generated</th></tr></thead>
+        <tbody>
+          <tr><td>OK</td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>
+          <tr><td>NG-Single</td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>
+          <tr><td>NG-No Solder</td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>
+          <tr><td>NG-Not Enough Solder</td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>
+          <tr><td>NG-Misaligned</td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>
+        </tbody>
+      </table></div>
+      <p class="caption"><b>Table 3.</b> Real and synthetic image counts per defect class.</p>
+    </section>
+
+    <!-- ===================== 04 ===================== -->
+    <section class="sec" id="section-4" data-title="Generation Pipeline">
+      <div class="sec-head"><span class="sec-num">04</span><h2>Generation Pipeline</h2></div>
+      <p>Each defect class gets its own LoRA adapter trained on top of SDXL Base 1.0 ("individual" training). Prior work showed this beats a single model trained on all classes for fidelity, FID and downstream accuracy on clear-cut classes.</p>
+      <figure data-fig="End-to-end generation pipeline"><div class="frame"><div class="ph">images/pipeline.png: data → captioning → LoRA training → generation → evaluation</div></div><figcaption>End-to-end synthetic defect generation pipeline.</figcaption></figure>
+
+      <h3 id="s4-1"><span class="sub-num">4.1</span>Dataset review &amp; defect description</h3>
+      <p>Before any training, uploaded images are checked automatically. These checks are deterministic Python with no LLM, so rejected images are never captioned.</p>
+      <div class="grid g3">
+        <div class="card"><h5>Sufficiency</h5><p>Per-class minimum image count.</p></div>
+        <div class="card"><h5>Duplicates</h5><p>Perceptual hashing catches near-duplicate uploads.</p></div>
+        <div class="card"><h5>Captioning</h5><p>Brief user notes become visually specific captions and prompt variants, the biggest lever on small datasets.</p></div>
+      </div>
+
+      <h3 id="s4-2"><span class="sub-num">4.2</span>Key hyperparameters</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Parameter</th><th>Role</th><th>Search range</th><th>Default</th></tr></thead>
+        <tbody>
+          <tr><td><code>lora_rank</code></td><td>Adapter capacity</td><td>—</td><td>—</td></tr>
+          <tr><td><code>learning_rate</code></td><td>Training step size</td><td>—</td><td>—</td></tr>
+          <tr><td><code>train_steps</code></td><td>Training duration; overfitting risk</td><td>—</td><td>—</td></tr>
+          <tr><td><code>checkpoint</code></td><td>Which saved epoch to generate from</td><td>—</td><td>—</td></tr>
+          <tr><td><code>guidance_scale</code></td><td>Prompt adherence vs diversity</td><td>—</td><td>—</td></tr>
+          <tr><td><code>n_images</code></td><td>Synthetic images per class</td><td>—</td><td>—</td></tr>
+        </tbody>
+      </table></div>
+      <p class="caption"><b>Table 4.</b> Hyperparameters exposed to the tuning assistant.</p>
+    </section>
+
+    <!-- ===================== 05 ===================== -->
+    <section class="sec" id="section-5" data-title="Model Optimisation">
+      <div class="sec-head"><span class="sec-num">05</span><h2>Model Optimisation</h2></div>
+      <p>Two routes are being explored: switching to a stronger base model, or keeping SDXL and tuning its training settings (LoRA rank, learning rate, steps). Each candidate is compared per defect class on image quality and generation speed.</p>
+      <h3 id="s5-1"><span class="sub-num">5.1</span>Candidate models</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Model</th><th>Mode</th><th>Why consider it</th><th>Trade-off</th></tr></thead>
+        <tbody>
+          <tr><td><a href="https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0">SDXL Base 1.0</a></td><td>Text-to-image</td><td>Current baseline; best prior results</td><td>Outputs can look over-polished and synthetic</td></tr>
+          <tr><td><a href="https://huggingface.co/SG161222/RealVisXL_V5.0">RealVisXL V5.0</a></td><td>Text-to-image</td><td>Same SDXL architecture, tuned for photorealism: lighting, depth, specular highlights, metal grain. Only the model path changes.</td><td>Not yet tested on solder defects</td></tr>
+          <tr><td><a href="https://huggingface.co/diffusers/stable-diffusion-xl-1.0-inpainting-0.1">SDXL Inpainting 0.1</a></td><td>Image-to-image</td><td>Paints the defect onto a real photo, so only the masked joint changes; lighting, angle and layout match production</td><td>Needs a real source image per generation, so less scene variety</td></tr>
+        </tbody>
+      </table></div>
+      <p class="caption"><b>Table 5.</b> Base models under consideration.</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Model</th><th>Mode</th><th style="text-align:right">FID</th><th style="text-align:right">Time / image (s)</th><th>Qualitative notes</th></tr></thead>
+        <tbody>
+          <tr><td>SDXL Base 1.0</td><td>txt2img</td><td class="num">—</td><td class="num">—</td><td>—</td></tr>
+          <tr><td>RealVisXL V5.0</td><td>txt2img</td><td class="num">—</td><td class="num">—</td><td>—</td></tr>
+          <tr><td>SDXL Inpainting 0.1</td><td>img2img</td><td class="num">—</td><td class="num">—</td><td>—</td></tr>
+        </tbody>
+      </table></div>
+      <p class="caption"><b>Table 6.</b> Text-to-image vs image-to-image comparison, averaged across defect classes.</p>
+      <h3 id="s5-2"><span class="sub-num">5.2</span>Before vs after</h3>
+      <div class="grid g2">
+        <figure data-fig="Baseline SDXL-LoRA output"><div class="frame"><div class="ph sq">images/before.png</div></div><figcaption>Baseline output</figcaption></figure>
+        <figure data-fig="Optimised SDXL-LoRA output"><div class="frame"><div class="ph sq">images/after.png</div></div><figcaption>Optimised output</figcaption></figure>
+      </div>
+    </section>
+
+    <!-- ===================== 06 ===================== -->
+    <section class="sec" id="section-6" data-title="Agentic Tuning Assistant">
+      <div class="sec-head"><span class="sec-num">06</span><h2>Agentic Tuning Assistant</h2></div>
+      <p>The AITK toolkit lets users set training hyperparameters by hand or accept defaults, but good settings differ by defect class and are hard to judge without generative-AI experience. Industry search methods are also static: someone has to define the search space and iterations. AgentHPO (Agent-Driven Hyperparameter Optimisation) replaces this with three cooperating agents. Each new configuration is conditioned on the results of earlier runs.</p>
+
+      <h3 id="s6-1"><span class="sub-num">6.1</span>Agents</h3>
+      <div class="grid g3">
+        <div class="card"><h5>Recommender</h5><p>Proposes the next SDXL-LoRA configuration from dataset information, the search space, experiment history and decision feedback. Rules from trial-and-error cap risky values (e.g. a parameter known to deform images).</p></div>
+        <div class="card"><h5>Evaluator</h5><p>Trains and generates with the proposed configuration, then scores the images quantitatively (FID, LPIPS, diversity, memorisation) against an evaluation matrix of acceptable vs unacceptable. No LLM judges images visually.</p></div>
+        <div class="card"><h5>Decision</h5><p>Analyses the experiment history and chooses <code>EXPLORE</code> (search a new region), <code>EXPLOIT</code> (search near good trials) or <code>TERMINATE</code>. Accepted configurations are saved with their image set.</p></div>
+      </div>
+      <div class="callout"><strong>Configuration Validator</strong>LLM output is not guaranteed to be valid, so a deterministic validator sits between the Recommender and training. It rejects settings outside allowed ranges and enforces the run and GPU-hour budget.</div>
+      <div class="callout todo"><strong>Open question (10 Oct)</strong>Evaluate an SVM and a genetic algorithm with Bayesian optimisation as alternatives to a local LLM in the agent loop.</div>
+
+      <h3 id="s6-2"><span class="sub-num">6.2</span>Control loop</h3>
+      <p>Step through one iteration of the loop:</p>
+      <div class="loop">
+        <svg viewBox="0 0 760 300" role="img" aria-label="Agent control loop diagram">
+          <defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+          <g style="color:var(--faint)">
+            <path class="edge" data-e="0" d="M190,60 L270,60" marker-end="url(#arr)"/>
+            <path class="edge" data-e="1" d="M440,60 L520,60" marker-end="url(#arr)"/>
+            <path class="edge" data-e="2" d="M605,90 L605,200" marker-end="url(#arr)"/>
+            <path class="edge" data-e="3" d="M520,230 L440,230" marker-end="url(#arr)"/>
+            <path class="edge" data-e="4" d="M270,230 L190,230" marker-end="url(#arr)"/>
+            <path class="edge" data-e="5" d="M105,200 L105,90" marker-end="url(#arr)"/>
+          </g>
+          <g class="node" data-n="0"><rect x="20" y="30" width="170" height="60" rx="10"/><text x="105" y="56" text-anchor="middle">Recommender</text><text class="s" x="105" y="74" text-anchor="middle">propose next config</text></g>
+          <g class="node" data-n="1"><rect x="270" y="30" width="170" height="60" rx="10"/><text x="355" y="56" text-anchor="middle">Config Validator</text><text class="s" x="355" y="74" text-anchor="middle">ranges + budget check</text></g>
+          <g class="node" data-n="2"><rect x="520" y="30" width="170" height="60" rx="10"/><text x="605" y="56" text-anchor="middle">Train + Generate</text><text class="s" x="605" y="74" text-anchor="middle">SDXL-LoRA run</text></g>
+          <g class="node" data-n="3"><rect x="520" y="200" width="170" height="60" rx="10"/><text x="605" y="226" text-anchor="middle">Evaluator</text><text class="s" x="605" y="244" text-anchor="middle">FID · LPIPS · diversity</text></g>
+          <g class="node" data-n="4"><rect x="270" y="200" width="170" height="60" rx="10"/><text x="355" y="226" text-anchor="middle">Experiment history</text><text class="s" x="355" y="244" text-anchor="middle">JSONL run log</text></g>
+          <g class="node" data-n="5"><rect x="20" y="200" width="170" height="60" rx="10"/><text x="105" y="226" text-anchor="middle">Decision</text><text class="s" x="105" y="244" text-anchor="middle">explore · exploit · terminate</text></g>
+        </svg>
+        <div class="loop-ctrl">
+          <button class="btn primary" id="loopNext">Next step ▸</button>
+          <button class="btn" id="loopPlay">Auto-play</button>
+          <div class="loop-desc" id="loopDesc">Press <b>Next step</b> to walk through one tuning iteration.</div>
+        </div>
+      </div>
+      <p class="caption"><b>Figure <span data-figref="loop"></span>.</b> One iteration of the agentic tuning loop. Training runs exactly as configured; the loop repeats until the budget is spent or the Decision agent terminates.</p>
+
+      <h3 id="s6-3"><span class="sub-num">6.3</span>Example decision log</h3>
+<pre style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;overflow-x:auto;font:12.5px/1.6 var(--mono);margin:18px 0">{
+  "run": 7,
+  "class": "NG-Misaligned",
+  "action": "EXPLOIT",
+  "config": { "lora_rank": "—", "learning_rate": "—", "train_steps": "—" },
+  "rationale": "— (placeholder: agent's reasoning for this decision)"
+}</pre>
+
+      <h3 id="s6-4"><span class="sub-num">6.4</span>Two-stage evaluation</h3>
+      <p>Training SDXL for many configurations is expensive, so tuning and downstream testing are separated.</p>
+      <ol>
+        <li><b>Stage 1, AgentHPO:</b> about 15–20 trials search for strong image-generation configurations; the top few are retained.</li>
+        <li><b>Stage 2, downstream validation:</b> only the retained configurations go through the full inspection-model experiment (Section 08).</li>
+      </ol>
+    </section>
+
+    <!-- ===================== 07 ===================== -->
+    <section class="sec" id="section-7" data-title="Controllable Variation (Future)">
+      <div class="sec-head"><span class="sec-num">07</span><h2>Controllable Variation <span style="font-size:13px;font-weight:500;color:var(--warn);border:1px solid currentColor;border-radius:999px;padding:2px 10px;vertical-align:middle">Future goal</span></h2></div>
+      <div class="callout todo"><strong>Future goal</strong>Controllable variation comes from TE Connectivity's original project brief and is outside the current semester's scope. It will be explored once the core pipeline, agent and validation are in place.</div>
+      <p>Inspection models must handle defects at different severities, orientations and lighting conditions. The explorer below previews how generated samples could be browsed along each axis.</p>
+      <div class="explorer">
+        <div class="ph" id="expImg">images/variations/misaligned_s2_o0_l1.png</div>
+        <div>
+          <div class="ctrl"><label>Defect class</label>
+            <select id="expClass">
+              <option value="single">NG-Single</option>
+              <option value="nosolder">NG-No Solder</option>
+              <option value="notenough">NG-Not Enough Solder</option>
+              <option value="misaligned" selected>NG-Misaligned</option>
+            </select></div>
+          <div class="ctrl"><label>Severity <span id="vSev">medium</span></label><input type="range" id="expSev" min="0" max="4" value="2"></div>
+          <div class="ctrl"><label>Orientation <span id="vOri">0°</span></label><input type="range" id="expOri" min="0" max="3" value="0"></div>
+          <div class="ctrl"><label>Lighting <span id="vLight">nominal</span></label><input type="range" id="expLight" min="0" max="2" value="1"></div>
+          <div class="ctrl"><label>Prompt</label><div class="prompt-box" id="expPrompt"></div></div>
+        </div>
+      </div>
+      <div class="callout"><strong>How to connect real images</strong>Save generated samples as <code>images/variations/{class}_s{0-4}_o{0-3}_l{0-2}.png</code> and the explorer will load them automatically. Until then it shows the expected file path.</div>
+    </section>
+
+    <!-- ===================== 08 ===================== -->
+    <section class="sec" id="section-8" data-title="Evaluation">
+      <div class="sec-head"><span class="sec-num">08</span><h2>Evaluation</h2></div>
+      <p>Synthetic images are judged on two questions: <b>are they good images?</b> (realism, diversity, originality) and <b>do they help?</b> (downstream inspection performance on held-out real defects).</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Metric</th><th>Measures</th><th>Better</th></tr></thead>
+        <tbody>
+          <tr><td>FID</td><td>Similarity of real and generated feature distributions</td><td>Lower</td></tr>
+          <tr><td>LPIPS</td><td>Perceptual difference between images</td><td>—</td></tr>
+          <tr><td>Diversity</td><td>Variation within the generated set</td><td>Higher</td></tr>
+          <tr><td>Memorisation / originality</td><td>Whether outputs copy training images</td><td>Less copying</td></tr>
+        </tbody>
+      </table></div>
+      <p class="caption"><b>Table 7.</b> Image-quality metrics combined into the Evaluator's score.</p>
+
+      <h3 id="s8-1"><span class="sub-num">8.1</span>Image quality (FID)</h3>
+      <div class="chart" id="fidChart"></div>
+      <p class="caption"><b>Figure <span data-figref="fid"></span>.</b> FID per class, lower is better. Placeholder values; edit <code>FID_DATA</code> in the page script.</p>
+
+      <h3 id="s8-2"><span class="sub-num">8.2</span>Downstream validation</h3>
+      <p>The inspection model is trained on three datasets and tested on the same held-out real defects.</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Training dataset</th><th style="text-align:right">Recall</th><th style="text-align:right">Precision</th><th style="text-align:right">False-positive rate</th></tr></thead>
+        <tbody>
+          <tr><td>Real only (baseline)</td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>
+          <tr><td>Real + synthetic (previous workflow)</td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>
+          <tr><td><b>Real + synthetic (agent-optimised)</b></td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>
+        </tbody>
+      </table></div>
+      <p class="caption"><b>Table 8.</b> Downstream inspection-model performance on held-out real defects.</p>
+
+      <h3 id="s8-3"><span class="sub-num">8.3</span>Domain gap analysis</h3>
+      <figure data-fig="Feature-space embedding of real vs synthetic images (t-SNE / UMAP)"><div class="frame"><div class="ph">images/embedding.png: real vs synthetic feature embedding</div></div><figcaption>Real and synthetic images in a shared feature space.</figcaption></figure>
+    </section>
+
+    <!-- ===================== 09 ===================== -->
+    <section class="sec" id="section-9" data-title="Application &amp; Reporting">
+      <div class="sec-head"><span class="sec-num">09</span><h2>Application &amp; Reporting</h2></div>
+      <p>Everything is integrated into the AITK web app: upload images, define classes, then choose AgentHPO or manual training. Each run produces an experiment report.</p>
+      <h3 id="s9-0"><span class="sub-num">9.1</span>Per-run experiment report</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Field</th><th>Contents</th></tr></thead>
+        <tbody>
+          <tr><td>Data</td><td>Classes, image counts, dataset-review results</td></tr>
+          <tr><td>Settings</td><td>Final configuration and the trials that led to it</td></tr>
+          <tr><td>Quality</td><td>FID, LPIPS, diversity, memorisation scores</td></tr>
+          <tr><td>Validation</td><td>Downstream recall, precision, false-positive rate</td></tr>
+          <tr><td>Recommendation</td><td>Keep or reject, with the agents' rationale, for human approval</td></tr>
+        </tbody>
+      </table></div>
+      <p class="caption"><b>Table 9.</b> Report schema (draft).</p>
+      <h3 id="s9-1"><span class="sub-num">9.2</span>Demo walkthrough</h3>
+      <div class="video" id="demoVideo"><div class="ph" style="height:100%;aspect-ratio:auto">Paste a YouTube embed URL into DEMO_VIDEO in the page script</div></div>
+      <p class="caption" style="margin-top:8px"><b>Video 1.</b> A user generates a new defect class with the tuning assistant.</p>
+    </section>
+
+    <!-- ===================== 10 ===================== -->
+    <section class="sec" id="section-10" data-title="Future Work">
+      <div class="sec-head"><span class="sec-num">10</span><h2>Future Work</h2></div>
+      <ul>
+        <li>Automated preprocessing: background normalisation, illumination correction, ROI extraction.</li>
+        <li><a href="#section-7">Controllable variation</a>: severity, orientation and lighting control, including severity interpolation and multi-class joint conditioning.</li>
+        <li>Generate → critique → refine captioning loop for defect descriptions.</li>
+        <li>On-site testing at TE Connectivity's Dongguan facility.</li>
+        <li>Integration with real-time production inspection pipelines.</li>
+      </ul>
+    </section>
+
+    <!-- ===================== TIMELINE ===================== -->
+    <section class="sec" id="section-timeline" data-title="Project Timeline">
+      <div class="sec-head"><span class="sec-num">11</span><h2>Project Timeline</h2></div>
+      <p>The project runs from August 2026 to May 2027 across two semesters. Semester 1 is for understanding the existing system, reading the literature, exploring models and designing the architecture. Semester 2 is for building, validating and delivering it.</p>
+
+      <div class="sem-cols">
+        <div class="sem-card">
+          <h5>Semester 1: Understand &amp; design</h5>
+          <div class="when">Aug – Dec 2026</div>
+          <ul>
+            <li>Learn how the AITK code runs and get it running on HPC</li>
+            <li>Understand the codebase, hyperparameters and outputs</li>
+            <li>Identify pain points in the current workflow</li>
+            <li>Literature review: industry generative models, agentic HPO, defect evaluation</li>
+            <li>Explore alternative models (RealVisXL, SDXL Inpainting; txt2img vs img2img)</li>
+            <li>Design the AgentHPO architecture and define end-of-project goals</li>
+          </ul>
+        </div>
+        <div class="sem-card s2">
+          <h5>Semester 2: Build, validate &amp; deliver</h5>
+          <div class="when">Jan – May 2027</div>
+          <ul>
+            <li>Lock in the base model and optimise its training settings</li>
+            <li>Build the Recommender, Validator, Evaluator and Decision agents</li>
+            <li>Run the real-only and previous-workflow baselines</li>
+            <li>Generate the agent-optimised dataset and run the three-way validation</li>
+            <li>Integrate the agent and per-run reports into the AITK web app</li>
+            <li>Final report, poster, demo and presentation</li>
+          </ul>
+        </div>
+      </div>
+
+      <h3 id="st-1"><span class="sub-num">11.1</span>Gantt chart</h3>
+      <div class="sem-tabs tabs" id="semFilter">
+        <button aria-selected="true" data-sem="all">Full project</button>
+        <button aria-selected="false" data-sem="s1">Semester 1</button>
+        <button aria-selected="false" data-sem="s2">Semester 2</button>
+      </div>
+      <div class="gantt-wrap"><div class="gantt" id="gantt"></div></div>
+      <div class="g-detail" id="gDetail"><h5>Click a bar or milestone</h5><div class="when">for details</div></div>
+      <div class="callout todo"><strong>Draft</strong>Semester 2 dates are planned and will be refined after the interim review. Edit the <code>TIMELINE</code> list in the page script to change bars and milestones.</div>
+    </section>
+
+    <!-- ===================== 11 ===================== -->
+    <section class="sec" id="section-11" data-title="References">
+      <div class="sec-head"><span class="sec-num">12</span><h2>References</h2></div>
+      <ol class="refs">
+        <li>Podell, D. et al. (2023). <i>SDXL: Improving Latent Diffusion Models for High-Resolution Image Synthesis.</i> arXiv:2307.01952.</li>
+        <li>Hu, E. J. et al. (2021). <i>LoRA: Low-Rank Adaptation of Large Language Models.</i> arXiv:2106.09685.</li>
+        <li>Heusel, M. et al. (2017). <i>GANs Trained by a Two Time-Scale Update Rule Converge to a Local Nash Equilibrium</i> (FID). NeurIPS.</li>
+        <li>Bergmann, P. et al. (2019). <i>MVTec AD: A Comprehensive Real-World Dataset for Unsupervised Anomaly Detection.</i> CVPR.</li>
+        <li>IndusAgent. <a href="https://arxiv.org/abs/2605.20682">arXiv:2605.20682</a>.</li>
+        <li>Agent-driven hyperparameter optimisation. <a href="https://arxiv.org/abs/2505.19205">arXiv:2505.19205</a>; <a href="https://medium.com/@chaithanyavijaya/agent-driven-hyperparameter-optimization-framework-dbf968daab56">Agent-Driven Hyperparameter Optimization Framework</a> (Medium).</li>
+        <li>Recommending agent reference. <a href="https://arxiv.org/abs/2607.04433">arXiv:2607.04433</a>.</li>
+        <li>Wong, W. H., Yeo, N. T. W., &amp; Tan, P. H. (2025). <i>AI Synthetic Image Generation of Defect Images.</i> CDE4301 UROP Report, NUS.</li>
+      </ol>
+    </section>
+
+    <!-- ===================== 12 ===================== -->
+    <section class="sec" id="section-12" data-title="List of Figures">
+      <div class="sec-head"><span class="sec-num">13</span><h2>List of Figures</h2></div>
+      <ul id="lof"></ul>
+    </section>
+
+    <!-- ===================== 13 ===================== -->
+    <section class="sec" id="section-13" data-title="Team">
+      <div class="sec-head"><span class="sec-num">14</span><h2>Team</h2></div>
+      <div class="grid g4">
+        <div class="card"><h5>Seraphine</h5><p>MSE · Evaluator agent: evaluation matrix and acceptance rules</p></div>
+        <div class="card"><h5>Chin</h5><p>Model optimisation</p></div>
+        <div class="card"><h5>Roy</h5><p>Model optimisation</p></div>
+        <div class="card"><h5>—</h5><p>Recommender / Decision agents</p></div>
+      </div>
+      <p style="color:var(--muted);font-size:14px">Supervised by Dr Tang Kok Zuea, NUS College of Design and Engineering. In collaboration with TE Connectivity.</p>
+    </section>
+
+    <footer>© 2026 NUS EDIC FYP Team · AI Synthetic Generation of Defect Images. A final-year project at the National University of Singapore in collaboration with TE Connectivity. Work in progress; results and plans are subject to change.</footer>
+  </main>
+</div>
+
+<div class="lightbox" id="lightbox"><img alt=""></div>
+<button class="icon-btn to-top" id="toTop" aria-label="Back to top">↑</button>
+
+<script>
+/* ======== EDIT THESE ======== */
+const FID_DATA = [            // lower is better; replace with real values
+  { label: "NG-Single",            value: null },
+  { label: "NG-No Solder",         value: null },
+  { label: "NG-Not Enough Solder", value: null },
+  { label: "NG-Misaligned",        value: null },
+];
+const DEMO_VIDEO = "";        // e.g. "https://www.youtube.com/embed/VIDEO_ID"
+/* ============================ */
+
+// Theme toggle (remembered per browser)
+(function(){
+  const root = document.documentElement;
+  try { const t = localStorage.getItem('theme'); if (t) root.dataset.theme = t; } catch(e){}
+  document.getElementById('themeBtn').onclick = () => {
+    const dark = root.dataset.theme ? root.dataset.theme === 'dark'
+      : matchMedia('(prefers-color-scheme: dark)').matches;
+    root.dataset.theme = dark ? 'light' : 'dark';
+    try { localStorage.setItem('theme', root.dataset.theme); } catch(e){}
+  };
+})();
+
+// Build sidebar TOC from sections + h3s
+const sections = [...document.querySelectorAll('section.sec')];
+const toc = document.getElementById('toc');
+sections.forEach((s, i) => {
+  const li = document.createElement('li');
+  const num = String(i + 1).padStart(2, '0');
+  li.innerHTML = `<a href="#${s.id}"><span class="n">${num}</span><span>${s.dataset.title}</span></a>`;
+  const subs = s.querySelectorAll('h3[id]');
+  if (subs.length) {
+    const ul = document.createElement('ul'); ul.className = 'sub';
+    subs.forEach(h => {
+      const t = h.textContent.replace(/^\d+\.\d+/, '').trim();
+      ul.insertAdjacentHTML('beforeend', `<li><a href="#${h.id}">${t}</a></li>`);
+    });
+    li.appendChild(ul);
+  }
+  toc.appendChild(li);
+});
+
+// Scrollspy + progress
+const links = [...toc.querySelectorAll(':scope > li')];
+function onScroll(){
+  let idx = 0;
+  sections.forEach((s, i) => { if (s.getBoundingClientRect().top < 140) idx = i; });
+  links.forEach((li, i) => {
+    li.classList.toggle('open', i === idx);
+    li.querySelector('a').classList.toggle('active', i === idx);
+  });
+  const h = document.documentElement;
+  document.getElementById('progress').style.width = (h.scrollTop / (h.scrollHeight - h.clientHeight) * 100) + '%';
+  document.getElementById('toTop').classList.toggle('on', h.scrollTop > 600);
+}
+addEventListener('scroll', onScroll, { passive: true }); onScroll();
+document.getElementById('toTop').onclick = () => scrollTo({ top: 0 });
+
+// Mobile sidebar
+const sidebar = document.getElementById('sidebar');
+document.getElementById('menuBtn').onclick = () => sidebar.classList.toggle('open');
+toc.addEventListener('click', e => { if (e.target.closest('a')) sidebar.classList.remove('open'); });
+
+// Tabs
+document.querySelectorAll('[data-tabs]').forEach(group => {
+  const panels = group.parentElement.querySelectorAll('.tab-panel');
+  group.querySelectorAll('button').forEach(b => b.onclick = () => {
+    group.querySelectorAll('button').forEach(x => x.setAttribute('aria-selected', x === b));
+    panels.forEach(p => p.classList.toggle('active', p.dataset.panel === b.dataset.tab));
+  });
+});
+
+// Figure numbering + List of Figures
+(function(){
+  const lof = document.getElementById('lof');
+  let n = 0;
+  const items = [];
+  document.querySelectorAll('figure[data-fig], [data-figref]').forEach(el => {
+    n++;
+    if (el.matches('figure')) {
+      const cap = el.querySelector('figcaption');
+      cap.innerHTML = `<b>Figure ${n}.</b> ` + cap.innerHTML;
+      el.id = el.id || 'fig-' + n;
+      items.push([n, el.dataset.fig, el.id]);
+    } else {
+      el.textContent = n;
+      const host = el.closest('p'); host.id = 'fig-' + n;
+      const title = { loop: 'Agentic tuning control loop', fid: 'FID per defect class' }[el.dataset.figref] || 'Figure';
+      items.push([n, title, host.id]);
+    }
+  });
+  items.forEach(([i, t, id]) => lof.insertAdjacentHTML('beforeend', `<li><b>${i}</b><a href="#${id}">${t}</a></li>`));
+})();
+
+// Lightbox for real images
+const lb = document.getElementById('lightbox');
+document.addEventListener('click', e => {
+  const img = e.target.closest('figure .frame img');
+  if (img) { lb.querySelector('img').src = img.src; lb.classList.add('on'); }
+});
+lb.onclick = () => lb.classList.remove('on');
+addEventListener('keydown', e => { if (e.key === 'Escape') lb.classList.remove('on'); });
+
+// Agent loop stepper
+(function(){
+  const steps = [
+    ['Recommender', 'proposes the next SDXL-LoRA configuration from dataset info, the search space, past runs and decision feedback.'],
+    ['Config Validator', 'deterministically rejects out-of-range settings and stops if the run or GPU-hour budget is spent.'],
+    ['Train + Generate', 'the toolkit trains the LoRA and generates images exactly as configured.'],
+    ['Evaluator', 'scores the images on FID, LPIPS, diversity and memorisation against the evaluation matrix.'],
+    ['Experiment history', 'the run, its settings and scores are logged as one JSONL line, so later decisions can build on it.'],
+    ['Decision', 'reviews the history and chooses EXPLORE, EXPLOIT or TERMINATE. On TERMINATE, the best runs go to downstream validation.'],
+  ];
+  const nodes = document.querySelectorAll('.loop .node');
+  const edges = document.querySelectorAll('.loop .edge');
+  const desc = document.getElementById('loopDesc');
+  let i = -1, timer = null;
+  function show(k){
+    nodes.forEach(n => n.classList.toggle('on', +n.dataset.n === k));
+    edges.forEach(e => e.classList.toggle('on', +e.dataset.e === k));
+    desc.innerHTML = `<b>${k + 1}/6 · ${steps[k][0]}:</b> ${steps[k][1]}`;
+  }
+  const next = () => { i = (i + 1) % steps.length; show(i); };
+  document.getElementById('loopNext').onclick = () => { stop(); next(); };
+  const playBtn = document.getElementById('loopPlay');
+  function stop(){ clearInterval(timer); timer = null; playBtn.textContent = 'Auto-play'; }
+  playBtn.onclick = () => {
+    if (timer) return stop();
+    next(); timer = setInterval(next, 2200); playBtn.textContent = 'Pause';
+  };
+})();
+
+// Variation explorer
+(function(){
+  const sev = ['minimal','mild','medium','severe','extreme'];
+  const ori = ['0°','90°','180°','270°'];
+  const light = ['dim','nominal','bright'];
+  const names = { single:'single pin', nosolder:'no solder', notenough:'insufficient solder', misaligned:'misaligned pins' };
+  const $ = id => document.getElementById(id);
+  function update(){
+    const c = $('expClass').value, s = +$('expSev').value, o = +$('expOri').value, l = +$('expLight').value;
+    $('vSev').textContent = sev[s]; $('vOri').textContent = ori[o]; $('vLight').textContent = light[l];
+    $('expPrompt').textContent = `<CLS_${c}>, solder pin weld, ${names[c]}, ${sev[s]} severity, rotated ${ori[o]}, ${light[l]} lighting, macro inspection photo`;
+    const path = `images/variations/${c}_s${s}_o${o}_l${l}.png`;
+    const box = $('expImg');
+    const img = new Image();
+    img.onload = () => { box.innerHTML = ''; box.style.background = 'none'; img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:8px'; box.appendChild(img); };
+    img.onerror = () => { box.style.background = ''; box.textContent = path; };
+    img.src = path;
+  }
+  ['expClass','expSev','expOri','expLight'].forEach(id => $(id).addEventListener('input', update));
+  update();
+})();
+
+// FID chart
+(function(){
+  const el = document.getElementById('fidChart');
+  const max = Math.max(...FID_DATA.map(d => d.value || 0), 1);
+  FID_DATA.forEach(d => {
+    const w = d.value == null ? 0 : (d.value / max * 100);
+    el.insertAdjacentHTML('beforeend',
+      `<div class="bar-row"><span>${d.label}</span><div class="bar-track"><div class="bar" style="width:${w}%"></div></div><span class="val">${d.value ?? '—'}</span></div>`);
+  });
+})();
+
+// Timeline (months: 0 = Aug 2026 ... 9 = May 2027; fractions allowed, e.g. 1.5 = mid-Sep)
+const TIMELINE = {
+  rows: [
+    { label: 'Onboarding & setup', items: [
+      { s:0, e:1.5, sem:'s1', t:'Onboarding & HPC setup', pts:['Project kick-off and supervisor meetings','Read the previous UROP report','Get the AITK pipeline running on HPC'] } ] },
+    { label: 'Code & pain points', items: [
+      { s:0.5, e:3, sem:'s1', t:'Understand the codebase', pts:['Trace how training and generation run end to end','Map each hyperparameter and what it changes','Document pain points in the current workflow'] } ] },
+    { label: 'Literature review', items: [
+      { s:0.5, e:3.5, sem:'s1', t:'Literature review', pts:['Generative models used in industry (diffusion, LoRA, GANs)','Agent-driven hyperparameter optimisation','Anomaly detection and image-quality evaluation'] } ] },
+    { label: 'Model exploration', items: [
+      { s:1, e:4, sem:'s1', t:'Explore alternative models', pts:['RealVisXL V5.0 (text-to-image)','SDXL Inpainting 0.1 (image-to-image)','Compare quality and speed per defect class'] },
+      { s:5, e:6.5, sem:'s2', planned:true, t:'Finalise & optimise model', pts:['Lock in the base model','Tune LoRA rank, learning rate and steps'] } ] },
+    { label: 'Architecture & agent', items: [
+      { s:2, e:4.5, sem:'s1', t:'Design AgentHPO architecture', pts:['Define agent roles and the control loop','Draft the evaluation matrix (acceptable vs unacceptable)','Set end-of-project goals'] },
+      { s:5, e:7.5, sem:'s2', planned:true, t:'Build the agents', pts:['Recommender, Config Validator, Evaluator, Decision','Budget enforcement and run logging','Connect to the training pipeline'] } ] },
+    { label: 'Evaluation & validation', items: [
+      { s:5.5, e:7, sem:'s2', planned:true, t:'Baselines & evaluation pipeline', pts:['Real-only baseline: recall, precision, FPR','Reproduce the previous-workflow dataset','FID, LPIPS, diversity and memorisation scoring'] },
+      { s:7, e:8.5, sem:'s2', planned:true, t:'Three-way validation', pts:['Generate the agent-optimised dataset','Compare real-only vs previous vs agent-optimised','Iterate on the agent based on results'] } ] },
+    { label: 'App & reporting', items: [
+      { s:6.5, e:8.5, sem:'s2', planned:true, t:'App integration & reports', pts:['AgentHPO option in the AITK web app','Per-run experiment report with keep/reject recommendation','Human approval step'] } ] },
+    { label: 'Write-up & delivery', items: [
+      { s:3.5, e:4.5, sem:'s1', t:'Interim report & presentation', pts:['Baseline, pain points and what we aim to improve','Planned architecture and timeline','No working prototype required'] },
+      { s:8.5, e:9.8, sem:'s2', planned:true, t:'Final report, poster & demo', pts:['Final report and poster','Live demo of agent-assisted generation','Final presentation'] } ] },
+    { label: 'Milestones', items: [
+      { m:1.0, sem:'s1', t:'Industry visit (31 Aug)', pts:['TE Connectivity site visit and briefing'] },
+      { m:4.2, sem:'s1', t:'Interim presentation', pts:['End of Semester 1'] },
+      { m:9.5, sem:'s2', planned:true, t:'Final presentation', pts:['End of project'] } ] },
+  ]
+};
+(function(){
+  const months = ['Aug','Sep','Oct','Nov','Dec','Jan','Feb','Mar','Apr','May'];
+  const g = document.getElementById('gantt'), det = document.getElementById('gDetail');
+  let range = [0, 10];
+  const pct = v => ((v - range[0]) / (range[1] - range[0]) * 100);
+  function fmt(v){ const m = Math.floor(v), half = v - m >= 0.5 ? 'late ' : 'early '; return half + months[Math.min(m,9)] + (m < 5 ? ' 2026' : ' 2027'); }
+  function render(){
+    const span = range[1] - range[0];
+    const cols = `repeat(${span},1fr)`;
+    let h = `<div class="g-grid" style="grid-template-columns:${cols}">${'<span></span>'.repeat(span)}</div>`;
+    h += `<div class="g-row g-head"><div></div><div class="g-track" style="grid-template-columns:${cols}">`;
+    if (range[0] === 0 && range[1] === 10) h += '<div class="g-sem s1">Semester 1 · AY26/27</div><div class="g-sem s2">Semester 2 · AY26/27</div>';
+    else h += `<div class="g-sem ${range[0]===0?'s1':'s2'}" style="grid-column:1/-1">${range[0]===0?'Semester 1':'Semester 2'}</div>`;
+    for (let i = range[0]; i < range[1]; i++) h += `<div class="g-month">${months[i]}</div>`;
+    h += '</div></div>';
+    TIMELINE.rows.forEach((r, ri) => {
+      const vis = r.items.some(it => it.m != null ? (it.m >= range[0] && it.m <= range[1]) : (it.e > range[0] && it.s < range[1]));
+      if (!vis) return;
+      h += `<div class="g-row"><div class="g-label">${r.label}</div><div class="g-track">`;
+      r.items.forEach((it, ii) => {
+        const id = ri + '-' + ii;
+        if (it.m != null) {
+          if (it.m < range[0] || it.m > range[1]) return;
+          h += `<button class="g-ms" data-id="${id}" style="left:${pct(it.m)}%" title="${it.t}" aria-label="${it.t}"></button>`;
+        } else {
+          const s0 = Math.max(it.s, range[0]), e0 = Math.min(it.e, range[1]);
+          if (e0 <= s0) return;
+          h += `<button class="g-bar ${it.sem}${it.planned?' planned':''}" data-id="${id}" style="left:${pct(s0)}%;width:calc(${pct(e0)-pct(s0)}% - 2px)" title="${it.t}">${it.t}</button>`;
+        }
+      });
+      h += '</div></div>';
+    });
+    h += `<div class="g-legend"><span><i style="background:var(--accent-2)"></i>Semester 1</span><span><i style="background:var(--accent)"></i>Semester 2</span><span><i style="background:var(--accent);opacity:.55"></i>Planned</span><span><i style="background:var(--text);transform:rotate(45deg) scale(.8)"></i>Milestone</span><span><i style="background:var(--ok);width:3px"></i>Today</span></div>`;
+    g.innerHTML = h;
+    // today marker
+    const now = new Date(), start = new Date(2026, 7, 1);
+    const mi = (now.getFullYear() - 2026) * 12 + now.getMonth() - 7 + (now.getDate() - 1) / 31;
+    if (mi >= range[0] && mi <= range[1]) {
+      const track = g.querySelector('.g-row:not(.g-head) .g-track');
+      const el = document.createElement('div'); el.className = 'g-today';
+      el.style.left = `calc(170px + (100% - 170px) * ${pct(mi) / 100})`;
+      g.appendChild(el);
+    }
+  }
+  g.addEventListener('click', e => {
+    const b = e.target.closest('[data-id]'); if (!b) return;
+    const [ri, ii] = b.dataset.id.split('-').map(Number), it = TIMELINE.rows[ri].items[ii];
+    g.querySelectorAll('.sel').forEach(x => x.classList.remove('sel')); b.classList.add('sel');
+    const when = it.m != null ? fmt(it.m) : `${fmt(it.s)} → ${fmt(it.e - 0.01)}`;
+    det.style.borderLeftColor = it.sem === 's1' ? 'var(--accent-2)' : 'var(--accent)';
+    det.innerHTML = `<h5>${it.t}${it.planned ? ' <span style="font:500 11px var(--mono);color:var(--faint)">PLANNED</span>' : ''}</h5><div class="when">${when}</div><ul>${it.pts.map(p => `<li>${p}</li>`).join('')}</ul>`;
+  });
+  document.querySelectorAll('#semFilter button').forEach(b => b.onclick = () => {
+    document.querySelectorAll('#semFilter button').forEach(x => x.setAttribute('aria-selected', x === b));
+    range = b.dataset.sem === 's1' ? [0, 5] : b.dataset.sem === 's2' ? [5, 10] : [0, 10];
+    render();
+  });
+  render();
+})();
+
+// Demo video
+if (DEMO_VIDEO) document.getElementById('demoVideo').innerHTML = `<iframe src="${DEMO_VIDEO}" allowfullscreen title="Demo video"></iframe>`;
+</script>
+</body>
+</html>
