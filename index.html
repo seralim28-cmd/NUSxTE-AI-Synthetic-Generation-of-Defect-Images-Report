@@ -584,11 +584,87 @@
       </table></div>
       <p class="caption"><b>Table 9.</b> Image-quality metrics combined into the Evaluator's score.</p>
 
-      <h3 id="s8-1"><span class="sub-num">8.1</span>Image quality (FID)</h3>
+      <h3 id="s8-1"><span class="sub-num">8.1</span>Evaluation matrix</h3>
+      <p>The Evaluator agent grades each training run in three tiers: hard gates on every image, quality scores on the images that pass, and metrics on the batch as a whole. The batch metrics set an <b>Accept</b>, <b>Borderline</b> or <b>Reject</b> verdict for the Decision agent. Per-image criteria adapt IPC-A-610 solder joint criteria (wetting, fillet, solder quantity, alignment) to TE's five classes; batch metrics follow recent synthetic defect generation work such as DefectFill (CVPR 2025).</p>
+      <div class="callout"><strong>Acceptable image ≠ acceptable joint</strong>A synthetic NG-No Solder image is good when it clearly shows a joint that fails in exactly that way. A synthetic OK image is good only if the joint would pass IPC criteria.</div>
+
+      <h4>Tier 1: per-image hard gates</h4>
+      <p>An image that fails any gate is discarded before scoring.</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Gate</th><th>Fails when</th><th>How it is measured</th></tr></thead>
+        <tbody>
+          <tr><td>G1 Generation artifacts</td><td>Garbled texture, melted or duplicated electrodes, text or watermark, extra parts</td><td>Artifact / anomaly detector; image-quality score below threshold</td></tr>
+          <tr><td>G2 Sharpness and exposure</td><td>Blurred joint region, or exposure outside the range of real images</td><td>Variance of Laplacian on the joint region; histogram percentiles vs real images</td></tr>
+          <tr><td>G3 Scene consistency</td><td>Camera angle, scale or framing differs from the fixed production camera</td><td>Electrode bounding-box position and size within the real distribution (mean ± 2σ)</td></tr>
+          <tr><td>G4 Electrode count</td><td>0 electrodes or more than 3 electrodes detected</td><td>Electrode detector / segmentation count</td></tr>
+          <tr><td>G5 Class identity</td><td>Image reads as a different class from the one intended</td><td>Classifier trained on real TE images predicts the intended class above a confidence threshold</td></tr>
+          <tr><td>G6 Not a copy</td><td>Near-duplicate of a training image (memorisation)</td><td>Nearest-neighbour similarity to the training set (DINOv2 / CLIP embeddings, SSIM) above threshold</td></tr>
+        </tbody>
+      </table></div>
+      <p class="caption"><b>Table 10.</b> Tier 1 hard gates applied to every generated image.</p>
+
+      <h4>Tier 2: per-image quality scores</h4>
+      <p>Images that pass every gate receive four scores from 0 to 1. The per-image score is their weighted sum; weights are starting values, to be tuned once a TE engineer has labelled a small set of synthetic images as good or bad.</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Criterion</th><th>What it asks</th><th>How it is measured</th><th>Weight</th></tr></thead>
+        <tbody>
+          <tr><td>Q1 Realism</td><td>Does it look like a real production image?</td><td>Embedding distance to the real class distribution (DINOv2 / CLIP features)</td><td>0.25</td></tr>
+          <tr><td>Q2 Defect fidelity</td><td>Is the defect in the right place and clearly visible?</td><td>Classifier confidence plus Grad-CAM overlap with the joint region</td><td>0.25</td></tr>
+          <tr><td>Q3 Physical plausibility</td><td>Is the joint geometry physically possible for this class?</td><td>Class rules in Table 12, using segmentation and simple geometry</td><td>0.35</td></tr>
+          <tr><td>Q4 Severity</td><td>How strong is the defect?</td><td>Class-specific measure in Table 12; feeds severity coverage in Tier 3</td><td>0.15</td></tr>
+        </tbody>
+      </table></div>
+      <p class="caption"><b>Table 11.</b> Tier 2 per-image quality scores.</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Class</th><th>Must show</th><th>Must not show</th><th>Severity measure (Q4)</th></tr></thead>
+        <tbody>
+          <tr><td>OK</td><td>Two electrodes on a shared vertical axis; continuous solder joining both; smooth, concave fillet with good wetting; bright, smooth surface</td><td>Sideways offset; exposed gaps; spikes or icicles; dull or grainy (cold joint) surface; solder balled up so the electrode outline is hidden</td><td>n/a (close to IPC Target)</td></tr>
+          <tr><td>NG-Single</td><td>One electrode; the opposing site empty</td><td>A second electrode, even partly; solder bridging to nothing</td><td>n/a (binary)</td></tr>
+          <tr><td>NG-No Solder</td><td>Both electrodes present and aligned; visible gap or bare metal at the interface</td><td>Any solder fillet; misalignment (a different class)</td><td>Gap width ÷ electrode width</td></tr>
+          <tr><td>NG-Not Enough Solder</td><td>Both electrodes aligned; solder present but fillet incomplete; part of the interface exposed</td><td>A full fillet (reads as OK); no solder at all (reads as No Solder)</td><td>Fillet coverage fraction (e.g. 10–90%)</td></tr>
+          <tr><td>NG-Misaligned</td><td>Both electrodes present and fully soldered; centre axes offset sideways</td><td>Missing solder; a missing electrode</td><td>Sideways offset ÷ electrode width (IPC overhang limits: 25% Class 3, 50% Class 2, as reference)</td></tr>
+        </tbody>
+      </table></div>
+      <p class="caption"><b>Table 12.</b> Physical plausibility rules (Q3) and severity measures (Q4) per class, adapted from IPC-A-610 joint criteria.</p>
+
+      <h4>Tier 3: per-batch metrics</h4>
+      <p>Tier 3 judges the configuration rather than single images, once per run and class. B8 needs a classifier retrain, so it runs only when B1–B7 pass, or every N iterations, to stay within the GPU budget.</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Metric</th><th>What it shows</th><th>Starting target</th></tr></thead>
+        <tbody>
+          <tr><td>B1 Gate pass rate</td><td>Share of generated images that pass Tier 1</td><td>≥ 80%</td></tr>
+          <tr><td>B2 Mean per-image score</td><td>Average Tier 2 score of images that pass</td><td>≥ 0.7</td></tr>
+          <tr><td>B3 KID vs real images</td><td>Realism at distribution level; KID is preferred to FID on small sets (~10 training images per class)</td><td>Lower than previous run; compare with a real-vs-real baseline</td></tr>
+          <tr><td>B4 FID</td><td>Continuity with UROP results</td><td>Reported only, not a gate</td></tr>
+          <tr><td>B5 Diversity (IC-LPIPS)</td><td>Whether the model produces near-identical images</td><td>Within the range of real images, not maximised (fixed camera)</td></tr>
+          <tr><td>B6 Memorisation rate</td><td>Share of images flagged by G6</td><td>≤ 5%</td></tr>
+          <tr><td>B7 Severity coverage</td><td>Spread of Q4 severity across the batch</td><td>Covers the real range; no single bin above 50%</td></tr>
+          <tr><td>B8 Downstream gain</td><td>Classifier trained on real + synthetic vs real only, tested on held-out real images</td><td>Recall for this class improves with no drop in other classes (deciding metric)</td></tr>
+        </tbody>
+      </table></div>
+      <p class="caption"><b>Table 13.</b> Tier 3 batch metrics. All thresholds and weights are starting values, to be calibrated with TE.</p>
+
+      <h4>Verdict and hand-off to the Decision agent</h4>
+      <div class="grid g3">
+        <div class="card"><h5>Accept</h5><p>B1–B7 meet their targets and B8 shows a recall gain. Decision: <code>EXPLOIT</code> or <code>TERMINATE</code>. Saves the config, LoRA checkpoint, images scoring ≥ 0.7 and metrics.</p></div>
+        <div class="card"><h5>Borderline</h5><p>B1–B7 pass but B8 is pending or within noise, or one of B3, B5, B7 is slightly off. Decision: <code>EXPLOIT</code> nearby and trigger B8. Saves the config as a candidate.</p></div>
+        <div class="card"><h5>Reject</h5><p>B1, B2 or B6 fails. Decision: <code>EXPLORE</code>, returning failure tags to the Recommender so the region is avoided.</p></div>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Field</th><th>Example</th></tr></thead>
+        <tbody>
+          <tr><td>verdict</td><td>"ACCEPT" | "BORDERLINE" | "REJECT"</td></tr>
+          <tr><td>metrics</td><td>gate_pass_rate, mean_score, kid, lpips, memorisation_rate, severity_hist, delta_recall</td></tr>
+          <tr><td>failure_tags</td><td>["G4_electrode_count", "Q3_offset_too_small"]</td></tr>
+        </tbody>
+      </table></div>
+      <p class="caption"><b>Table 14.</b> Structured Evaluator output passed to the Decision agent and stored in the experiment history.</p>
+
+      <h3 id="s8-2"><span class="sub-num">8.2</span>Image quality (FID)</h3>
       <div class="chart" id="fidChart"></div>
       <p class="caption"><b>Figure <span data-figref="fid"></span>.</b> FID per class, lower is better. Placeholder values; edit <code>FID_DATA</code> in the page script.</p>
 
-      <h3 id="s8-2"><span class="sub-num">8.2</span>Downstream validation</h3>
+      <h3 id="s8-3"><span class="sub-num">8.3</span>Downstream validation</h3>
       <p>The inspection model is trained on three datasets and tested on the same held-out real defects.</p>
       <div class="table-wrap"><table>
         <thead><tr><th>Training dataset</th><th style="text-align:right">Recall</th><th style="text-align:right">Precision</th><th style="text-align:right">False-positive rate</th></tr></thead>
@@ -598,9 +674,9 @@
           <tr><td><b>Real + synthetic (agent-optimised)</b></td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>
         </tbody>
       </table></div>
-      <p class="caption"><b>Table 10.</b> Downstream inspection-model performance on held-out real defects.</p>
+      <p class="caption"><b>Table 15.</b> Downstream inspection-model performance on held-out real defects.</p>
 
-      <h3 id="s8-3"><span class="sub-num">8.3</span>Domain gap analysis</h3>
+      <h3 id="s8-4"><span class="sub-num">8.4</span>Domain gap analysis</h3>
       <figure data-fig="Feature-space embedding of real vs synthetic images (t-SNE / UMAP)"><div class="frame"><div class="ph">images/embedding.png: real vs synthetic feature embedding</div></div><figcaption>Real and synthetic images in a shared feature space.</figcaption></figure>
     </section>
 
@@ -619,7 +695,7 @@
           <tr><td>Scaling</td><td>Job queue; add GPU workers later</td><td>One PC per site; federated learning later</td></tr>
         </tbody>
       </table></div>
-      <p class="caption"><b>Table 11.</b> Deployment options at a glance.</p>
+      <p class="caption"><b>Table 16.</b> Deployment options at a glance.</p>
 
       <div class="tabs" role="tablist" data-tabs="deploy">
         <button role="tab" aria-selected="true" data-tab="web">Centralised web</button>
@@ -657,7 +733,7 @@
             <tr><td>Reverse proxy</td><td>Nginx</td><td>Routing and HTTPS</td></tr>
           </tbody>
         </table></div>
-        <p class="caption"><b>Table 12.</b> Proposed stack, centralised web deployment.</p>
+        <p class="caption"><b>Table 17.</b> Proposed stack, centralised web deployment.</p>
       </div>
       <div class="tab-panel" data-panel="desk">
         <p>A desktop version that lets each site train and generate on its own PC. Training images, models and generated datasets stay on the machine; nothing is stored on a central server. Users get a normal Windows app instead of Python scripts or command-line tools.</p>
@@ -688,7 +764,7 @@
             <tr><td>Future</td><td>Flower</td><td>Federated learning between sites</td></tr>
           </tbody>
         </table></div>
-        <p class="caption"><b>Table 13.</b> Proposed stack, local desktop deployment.</p>
+        <p class="caption"><b>Table 18.</b> Proposed stack, local desktop deployment.</p>
       </div>
 
       <h3 id="s9-0"><span class="sub-num">9.2</span>Per-run experiment report</h3>
@@ -702,7 +778,7 @@
           <tr><td>Recommendation</td><td>Keep or reject, with the agents' rationale, for human approval</td></tr>
         </tbody>
       </table></div>
-      <p class="caption"><b>Table 14.</b> Report schema (draft).</p>
+      <p class="caption"><b>Table 19.</b> Report schema (draft).</p>
       <h3 id="s9-1"><span class="sub-num">9.3</span>Demo walkthrough</h3>
       <div class="video" id="demoVideo"><div class="ph" style="height:100%;aspect-ratio:auto">Paste a YouTube embed URL into DEMO_VIDEO in the page script</div></div>
       <p class="caption" style="margin-top:8px"><b>Video 1.</b> A user generates a new defect class with the tuning assistant.</p>
@@ -792,6 +868,8 @@
         <li>Agent-driven hyperparameter optimisation. <a href="https://arxiv.org/abs/2505.19205">arXiv:2505.19205</a>; <a href="https://medium.com/@chaithanyavijaya/agent-driven-hyperparameter-optimization-framework-dbf968daab56">Agent-Driven Hyperparameter Optimization Framework</a> (Medium).</li>
         <li>Recommending agent reference. <a href="https://arxiv.org/abs/2607.04433">arXiv:2607.04433</a>.</li>
         <li>Wong, W. H., Yeo, N. T. W., &amp; Tan, P. H. (2025). <i>AI Synthetic Image Generation of Defect Images.</i> CDE4301 UROP Report, NUS.</li>
+        <li>Song, J. et al. (2025). <i>DefectFill: Realistic Defect Generation with Inpainting Diffusion Model for Visual Inspection.</i> CVPR. <a href="https://openaccess.thecvf.com/content/CVPR2025/papers/Song_DefectFill_Realistic_Defect_Generation_with_Inpainting_Diffusion_Model_for_Visual_CVPR_2025_paper.pdf">PDF</a>.</li>
+        <li>IPC. <i>IPC-A-610: Acceptability of Electronic Assemblies.</i> IPC International; summary of solder joint criteria: <a href="https://www.smtinsider.com/insights/ipc-a-610-smt-solder-joint-acceptance-criteria">SMT Insider</a>.</li>
       </ol>
     </section>
 
@@ -1079,4 +1157,3 @@ if (DEMO_VIDEO) document.getElementById('demoVideo').innerHTML = `<iframe src="$
 </script>
 </body>
 </html>
-
