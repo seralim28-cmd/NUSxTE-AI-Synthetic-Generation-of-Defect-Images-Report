@@ -157,6 +157,15 @@
 
   footer{border-top:1px solid var(--border);padding:24px 0 0;margin-top:40px;font-size:13px;color:var(--faint)}
 
+  /* Flow diagrams */
+  .flow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin:18px 0}
+  .flow .node{background:var(--accent-2-soft);border:1px solid color-mix(in srgb,var(--accent-2) 35%,transparent);color:var(--text);border-radius:8px;padding:8px 12px;font-size:13px;font-weight:600;line-height:1.3;text-align:center}
+  .flow .node small{display:block;font-weight:400;color:var(--muted);font-size:11.5px}
+  .flow .node.store{border-radius:14px/8px}
+  .flow .arr{color:var(--faint);font-size:15px}
+  .flow .grp{display:flex;flex-direction:column;gap:6px}
+  .flow-label{font:600 11px var(--mono);text-transform:uppercase;letter-spacing:.08em;color:var(--faint);margin:18px 0 -10px}
+
   /* Timeline */
   .sem-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:18px 0 10px}
   .gantt-wrap{overflow-x:auto;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin:0 0 18px}
@@ -250,7 +259,7 @@
       <p class="lead">Synthetic defect image generation to address data scarcity in AI-based manufacturing inspection. Uses an optimised SDXL-LoRA pipeline, with an agentic assistant that automates complex hyperparameter tuning so non-specialist users can produce high-quality defect images.</p>
       <div class="meta">
         <span class="chip">Industry partner <b>TE Connectivity</b></span>
-        <span class="chip">Supervisor <b>Dr Tang Kok Zuea</b></span>
+        <span class="chip">Supervisors <b>Dr Tang Kok Zuea</b> · <b>Keith Tan</b></span>
         <span class="chip">Model <b>SDXL + LoRA</b></span>
         <span class="chip">Status <b>In progress</b></span>
         <span class="chip">Last updated <b id="updated">Oct 2026</b></span>
@@ -308,7 +317,7 @@
         <thead><tr><th>Gap in prior workflow</th><th>This project</th></tr></thead>
         <tbody>
           <tr><td>Results depend on expert judgement: defect descriptions, training duration, settings, checkpoint, which images to keep</td><td>Dataset review and captioning (Section 04); AgentHPO tuning (Section 06)</td></tr>
-          <tr><td>SDXL base outputs can look over-polished and synthetic</td><td>Alternative base models and image-to-image generation (Section 05)</td></tr>
+          <tr><td>SDXL needs &gt;12 GB VRAM, and text-to-image generation can get defect geometry wrong</td><td>Lighter photorealistic model and image-to-image generation (Section 05)</td></tr>
           <tr><td>No automated batch or per-image quality scoring</td><td>FID, LPIPS, diversity and memorisation scoring (Section 08)</td></tr>
           <tr><td>Realism never validated against downstream inspection performance</td><td>Three-way downstream comparison (Section 08)</td></tr>
           <tr><td>No record of why a run was kept or rejected</td><td>Per-run experiment report (Section 09)</td></tr>
@@ -377,7 +386,7 @@
     <!-- ===================== 04 ===================== -->
     <section class="sec" id="section-4" data-title="Generation Pipeline">
       <div class="sec-head"><span class="sec-num">04</span><h2>Generation Pipeline</h2></div>
-      <p>Each defect class gets its own LoRA adapter trained on top of SDXL Base 1.0 ("individual" training). Prior work showed this beats a single model trained on all classes for fidelity, FID and downstream accuracy on clear-cut classes.</p>
+      <p>Each defect class gets its own LoRA adapter ("individual" training), which prior work showed beats one model trained on all classes. LoRA training has moved from Hugging Face PEFT to <a href="https://github.com/bmaltais/kohya_ss">Kohya_ss</a>, which has more built-in LoRA controls, dataset management and memory optimisations, and supports several diffusion architectures with less custom code. Generation uses Hugging Face Diffusers in text-to-image or image-to-image mode.</p>
       <figure data-fig="End-to-end generation pipeline"><div class="frame"><div class="ph">images/pipeline.png: data → captioning → LoRA training → generation → evaluation</div></div><figcaption>End-to-end synthetic defect generation pipeline.</figcaption></figure>
 
       <h3 id="s4-1"><span class="sub-num">4.1</span>Dataset review &amp; defect description</h3>
@@ -397,6 +406,8 @@
           <tr><td><code>train_steps</code></td><td>Training duration; overfitting risk</td><td>—</td><td>—</td></tr>
           <tr><td><code>checkpoint</code></td><td>Which saved epoch to generate from</td><td>—</td><td>—</td></tr>
           <tr><td><code>guidance_scale</code></td><td>Prompt adherence vs diversity</td><td>—</td><td>—</td></tr>
+          <tr><td><code>strength</code></td><td>Img2img only: how far the output may depart from the reference image</td><td>—</td><td>—</td></tr>
+          <tr><td><code>seed</code></td><td>Reproducibility of a generation</td><td>—</td><td>—</td></tr>
           <tr><td><code>n_images</code></td><td>Synthetic images per class</td><td>—</td><td>—</td></tr>
         </tbody>
       </table></div>
@@ -406,31 +417,73 @@
     <!-- ===================== 05 ===================== -->
     <section class="sec" id="section-5" data-title="Model Optimisation">
       <div class="sec-head"><span class="sec-num">05</span><h2>Model Optimisation</h2></div>
-      <p>Two routes are being explored: switching to a stronger base model, or keeping SDXL and tuning its training settings (LoRA rank, learning rate, steps). Each candidate is compared per defect class on image quality and generation speed.</p>
-      <h3 id="s5-1"><span class="sub-num">5.1</span>Candidate models</h3>
+      <p>The UROP baseline uses SDXL + LoRA with text-to-image generation. This semester we tested whether a lighter photorealistic model and a different generation mode suit solder-joint defects better. So far, image-to-image with Realistic Vision 5.1 keeps defect geometry far more reliably than text-to-image.</p>
+
+      <h3 id="s5-1"><span class="sub-num">5.1</span>Baseline vs Realistic Vision</h3>
       <div class="table-wrap"><table>
-        <thead><tr><th>Model</th><th>Mode</th><th>Why consider it</th><th>Trade-off</th></tr></thead>
+        <thead><tr><th></th><th>UROP baseline</th><th>Realistic Vision 5.1</th></tr></thead>
         <tbody>
-          <tr><td><a href="https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0">SDXL Base 1.0</a></td><td>Text-to-image</td><td>Current baseline; best prior results</td><td>Outputs can look over-polished and synthetic</td></tr>
-          <tr><td><a href="https://huggingface.co/SG161222/RealVisXL_V5.0">RealVisXL V5.0</a></td><td>Text-to-image</td><td>Same SDXL architecture, tuned for photorealism: lighting, depth, specular highlights, metal grain. Only the model path changes.</td><td>Not yet tested on solder defects</td></tr>
-          <tr><td><a href="https://huggingface.co/diffusers/stable-diffusion-xl-1.0-inpainting-0.1">SDXL Inpainting 0.1</a></td><td>Image-to-image</td><td>Paints the defect onto a real photo, so only the masked joint changes; lighting, angle and layout match production</td><td>Needs a real source image per generation, so less scene variety</td></tr>
+          <tr><td>Base model</td><td>Stable Diffusion XL</td><td>SD1.5-derived, tuned for photorealism</td></tr>
+          <tr><td>Parameters</td><td>~3.5B total, ~2.6B U-Net</td><td>Much smaller (SD1.5 architecture)</td></tr>
+          <tr><td>Resolution</td><td>1024 × 1024</td><td>512 × 512, enough for current inspection images</td></tr>
+          <tr><td>VRAM</td><td>&gt;12 GB</td><td>~6 GB, trainable on consumer GPUs</td></tr>
+          <tr><td>LoRA training</td><td>Hugging Face PEFT + Accelerate</td><td>Kohya_ss / sd-scripts</td></tr>
+          <tr><td>Generation</td><td>Text-to-image</td><td>Text-to-image and image-to-image with the same LoRA</td></tr>
+          <tr><td>Trade-off</td><td>High quality, high VRAM and compute</td><td>Faster training and generation allow more experiments</td></tr>
         </tbody>
       </table></div>
-      <p class="caption"><b>Table 5.</b> Base models under consideration.</p>
+      <p class="caption"><b>Table 5.</b> UROP implementation compared with the Realistic Vision exploration.</p>
+
+      <h3 id="s5-2"><span class="sub-num">5.2</span>Explorations</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>#</th><th>Model</th><th>Generation</th><th>Why explore</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td><a href="https://huggingface.co/SG161222/Realistic_Vision_V5.1_noVAE">Realistic Vision 5.1</a> (SD1.5)</td><td>Image-to-image</td><td>Photorealistic prior that keeps the structure of real manufacturing images</td><td>Tested</td></tr>
+          <tr><td>2</td><td>Realistic Vision 5.1 (SD1.5)</td><td>Text-to-image</td><td>Direct comparison with img2img using the same trained LoRA</td><td>Tested</td></tr>
+          <tr><td>3</td><td><a href="https://huggingface.co/black-forest-labs/FLUX.1-dev">FLUX.1 dev</a></td><td>Text-to-image</td><td>Newer transformer-based flow-matching model with stronger prompt adherence and spatial understanding</td><td>Deferred: needs more VRAM than available</td></tr>
+        </tbody>
+      </table></div>
+      <p class="caption"><b>Table 6.</b> Model explorations this semester.</p>
+
+      <h3 id="s5-3"><span class="sub-num">5.3</span>Text-to-image vs image-to-image</h3>
+      <p>Txt2img starts from random noise, so the model must generate everything: electrode and solder geometry, alignment, camera composition, lighting and background. That gives high variety but many chances to be physically wrong, which matters for classes like NG-Misaligned where a small lateral shift separates OK from NG. Img2img starts from a real image and adds controlled noise, keeping camera angle and defect geometry while varying lighting, reflections and solder texture. Because the production camera setup is fixed, maximum diversity may not even be desirable.</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th></th><th>Txt2Img</th><th>Img2Img</th></tr></thead>
+        <tbody>
+          <tr><td>Starting point</td><td>Random noise</td><td>Real manufacturing image</td></tr>
+          <tr><td>Structural preservation</td><td>Low</td><td><b>High</b></td></tr>
+          <tr><td>Image diversity</td><td><b>High</b></td><td>Moderate</td></tr>
+          <tr><td>Camera consistency</td><td>Must be learned</td><td><b>Inherited from reference</b></td></tr>
+          <tr><td>Defect geometry</td><td>Must be generated</td><td><b>Can be preserved</b></td></tr>
+          <tr><td>Lighting variation</td><td>High</td><td>Controllable</td></tr>
+          <tr><td>Risk of unrealistic images</td><td>Higher</td><td>Lower at moderate strength</td></tr>
+          <tr><td>Needs a reference image</td><td>No</td><td>Yes</td></tr>
+          <tr><td>Depends on raw image quality</td><td>No</td><td><b>Yes</b></td></tr>
+          <tr><td>Rare-defect augmentation</td><td>Potentially suitable</td><td><b>Particularly promising</b></td></tr>
+          <tr><td>Main controls</td><td>Prompt + seed</td><td>Prompt + seed + strength</td></tr>
+        </tbody>
+      </table></div>
+      <p class="caption"><b>Table 7.</b> Generation modes compared.</p>
+
+      <h3 id="s5-4"><span class="sub-num">5.4</span>Results so far</h3>
+      <div class="grid g2">
+        <div class="card"><h5>Txt2img: inconsistent</h5><p>Two images generated for NG-Misaligned came out one aligned, one misaligned. The model has not reliably learned the class-defining spatial relationship between the top and bottom electrodes, which may mean insufficient training or difficulty with precise geometry.</p></div>
+        <div class="card"><h5>Img2img: structurally consistent</h5><p>Good reference images gave realistic variations that kept electrode alignment, camera position and defect geometry. But quality depends on the reference: blur, artifacts or existing defects in a poor raw image are preserved or amplified.</p></div>
+      </div>
+      <div class="grid g2">
+        <figure data-fig="Txt2img outputs for the NG-Misaligned class (Realistic Vision 5.1)"><div class="frame"><div class="ph">images/rv51_txt2img_misaligned.png</div></div><figcaption>Txt2img, NG-Misaligned: one output appears aligned.</figcaption></figure>
+        <figure data-fig="Img2img reference and generated pairs (Realistic Vision 5.1)"><div class="frame"><div class="ph">images/rv51_img2img_pairs.png</div></div><figcaption>Img2img: reference image (left) and generated image (right).</figcaption></figure>
+      </div>
       <div class="table-wrap"><table>
         <thead><tr><th>Model</th><th>Mode</th><th style="text-align:right">FID</th><th style="text-align:right">Time / image (s)</th><th>Qualitative notes</th></tr></thead>
         <tbody>
-          <tr><td>SDXL Base 1.0</td><td>txt2img</td><td class="num">—</td><td class="num">—</td><td>—</td></tr>
-          <tr><td>RealVisXL V5.0</td><td>txt2img</td><td class="num">—</td><td class="num">—</td><td>—</td></tr>
-          <tr><td>SDXL Inpainting 0.1</td><td>img2img</td><td class="num">—</td><td class="num">—</td><td>—</td></tr>
+          <tr><td>SDXL + LoRA (UROP)</td><td>txt2img</td><td class="num">—</td><td class="num">—</td><td>Baseline</td></tr>
+          <tr><td>Realistic Vision 5.1</td><td>txt2img</td><td class="num">—</td><td class="num">—</td><td>Class consistency unreliable for NG-Misaligned</td></tr>
+          <tr><td>Realistic Vision 5.1</td><td>img2img</td><td class="num">—</td><td class="num">—</td><td>Geometry preserved; sensitive to reference quality</td></tr>
         </tbody>
       </table></div>
-      <p class="caption"><b>Table 6.</b> Text-to-image vs image-to-image comparison, averaged across defect classes.</p>
-      <h3 id="s5-2"><span class="sub-num">5.2</span>Before vs after</h3>
-      <div class="grid g2">
-        <figure data-fig="Baseline SDXL-LoRA output"><div class="frame"><div class="ph sq">images/before.png</div></div><figcaption>Baseline output</figcaption></figure>
-        <figure data-fig="Optimised SDXL-LoRA output"><div class="frame"><div class="ph sq">images/after.png</div></div><figcaption>Optimised output</figcaption></figure>
-      </div>
+      <p class="caption"><b>Table 8.</b> Quantitative comparison (to be filled in).</p>
+      <div class="callout"><strong>FLUX: deferred</strong>FLUX.1 dev (~12B parameters) could model the small geometric differences between classes better, and Kohya_ss supports LoRA for it. It is not implemented yet because of hardware limits and will be revisited when suitable hardware and a compatible training setup are available.</div>
     </section>
 
     <!-- ===================== 06 ===================== -->
@@ -529,7 +582,7 @@
           <tr><td>Memorisation / originality</td><td>Whether outputs copy training images</td><td>Less copying</td></tr>
         </tbody>
       </table></div>
-      <p class="caption"><b>Table 7.</b> Image-quality metrics combined into the Evaluator's score.</p>
+      <p class="caption"><b>Table 9.</b> Image-quality metrics combined into the Evaluator's score.</p>
 
       <h3 id="s8-1"><span class="sub-num">8.1</span>Image quality (FID)</h3>
       <div class="chart" id="fidChart"></div>
@@ -545,7 +598,7 @@
           <tr><td><b>Real + synthetic (agent-optimised)</b></td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>
         </tbody>
       </table></div>
-      <p class="caption"><b>Table 8.</b> Downstream inspection-model performance on held-out real defects.</p>
+      <p class="caption"><b>Table 10.</b> Downstream inspection-model performance on held-out real defects.</p>
 
       <h3 id="s8-3"><span class="sub-num">8.3</span>Domain gap analysis</h3>
       <figure data-fig="Feature-space embedding of real vs synthetic images (t-SNE / UMAP)"><div class="frame"><div class="ph">images/embedding.png: real vs synthetic feature embedding</div></div><figcaption>Real and synthetic images in a shared feature space.</figcaption></figure>
@@ -554,8 +607,91 @@
     <!-- ===================== 09 ===================== -->
     <section class="sec" id="section-9" data-title="Application &amp; Reporting">
       <div class="sec-head"><span class="sec-num">09</span><h2>Application &amp; Reporting</h2></div>
-      <p>Everything is integrated into the AITK web app: upload images, define classes, then choose AgentHPO or manual training. Each run produces an experiment report.</p>
-      <h3 id="s9-0"><span class="sub-num">9.1</span>Per-run experiment report</h3>
+      <p>The tool lets users create a workspace, upload images, define classes, train LoRA models (AgentHPO or manual) and generate synthetic images with txt2img or img2img. Two ways of deploying it are being considered; each run produces an experiment report.</p>
+
+      <h3 id="s9-d"><span class="sub-num">9.1</span>Deployment options</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th></th><th>1 · Centralised web</th><th>2 · Local desktop</th></tr></thead>
+        <tbody>
+          <tr><td>Runs on</td><td>Central GPU server, used through a browser</td><td>The manufacturing site's own PC and GPU</td></tr>
+          <tr><td>Data</td><td>Stored centrally; raw images restricted by role</td><td>Never leaves the local machine</td></tr>
+          <tr><td>Database</td><td>PostgreSQL</td><td>SQLite</td></tr>
+          <tr><td>Scaling</td><td>Job queue; add GPU workers later</td><td>One PC per site; federated learning later</td></tr>
+        </tbody>
+      </table></div>
+      <p class="caption"><b>Table 11.</b> Deployment options at a glance.</p>
+
+      <div class="tabs" role="tablist" data-tabs="deploy">
+        <button role="tab" aria-selected="true" data-tab="web">Centralised web</button>
+        <button role="tab" aria-selected="false" data-tab="desk">Local desktop</button>
+      </div>
+      <div class="tab-panel active" data-panel="web">
+        <p>A web platform where users create workspaces, upload datasets, train LoRA models with Kohya_ss and generate images. GPU jobs go through a queue, so the system can start on one GPU and add more later.</p>
+        <div class="flow-label">Single-GPU server</div>
+        <div class="flow">
+          <div class="node">User<small>browser</small></div><span class="arr">→</span>
+          <div class="node">Next.js / React<small>frontend</small></div><span class="arr">→</span>
+          <div class="node">FastAPI<small>backend</small></div><span class="arr">→</span>
+          <div class="grp"><div class="node store">PostgreSQL<small>metadata</small></div><div class="node store">Redis<small>job queue</small></div></div><span class="arr">→</span>
+          <div class="node">Celery<small>GPU worker</small></div><span class="arr">→</span>
+          <div class="grp"><div class="node">Kohya_ss<small>LoRA training</small></div><div class="node">Diffusers<small>txt2img / img2img</small></div></div><span class="arr">→</span>
+          <div class="grp"><div class="node">NVIDIA GPU</div><div class="node store">MinIO<small>file storage</small></div></div>
+        </div>
+        <p>With one GPU, training and generation jobs cannot run at the same time, so the Redis queue runs them in turn. Adding Celery workers, one per GPU, later lets several jobs run in parallel.</p>
+        <div class="grid g2">
+          <div class="card"><h5>Workspaces</h5><p>Each project's members, datasets, training runs, LoRA models and generated datasets are kept separate.</p></div>
+          <div class="card"><h5>Role-based access</h5><p><b>Admin:</b> users, permissions, data, models. <b>Engineer:</b> datasets, training, generation. <b>Operator:</b> approved models and generation only. Raw training images can be limited to authorised users.</p></div>
+        </div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Layer</th><th>Technology</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td>Frontend</td><td>Next.js + React + TypeScript</td><td>Workspace, dataset, training and generation UI</td></tr>
+            <tr><td>Backend</td><td>FastAPI + Python</td><td>API and application logic</td></tr>
+            <tr><td>Database</td><td>PostgreSQL</td><td>Users, workspaces, experiments, job metadata</td></tr>
+            <tr><td>Job queue</td><td>Redis + Celery</td><td>Queue and schedule GPU work</td></tr>
+            <tr><td>Training</td><td>Kohya_ss / sd-scripts</td><td>LoRA training</td></tr>
+            <tr><td>Generation</td><td>Hugging Face Diffusers</td><td>Txt2img and img2img</td></tr>
+            <tr><td>ML runtime</td><td>PyTorch + CUDA</td><td>GPU computation</td></tr>
+            <tr><td>File storage</td><td>MinIO / S3</td><td>Datasets, LoRA weights, checkpoints, generated images</td></tr>
+            <tr><td>Containers</td><td>Docker + NVIDIA Container Toolkit</td><td>Isolated services with GPU access</td></tr>
+            <tr><td>Reverse proxy</td><td>Nginx</td><td>Routing and HTTPS</td></tr>
+          </tbody>
+        </table></div>
+        <p class="caption"><b>Table 12.</b> Proposed stack, centralised web deployment.</p>
+      </div>
+      <div class="tab-panel" data-panel="desk">
+        <p>A desktop version that lets each site train and generate on its own PC. Training images, models and generated datasets stay on the machine; nothing is stored on a central server. Users get a normal Windows app instead of Python scripts or command-line tools.</p>
+        <div class="flow-label">Local manufacturing PC</div>
+        <div class="flow">
+          <div class="node">User</div><span class="arr">→</span>
+          <div class="node">PySide6 / Qt<small>desktop app</small></div><span class="arr">→</span>
+          <div class="node">Python<small>app logic</small></div><span class="arr">→</span>
+          <div class="grp"><div class="node store">SQLite</div><div class="node">Local job manager</div></div><span class="arr">→</span>
+          <div class="grp"><div class="node">Kohya_ss<small>training</small></div><div class="node">Diffusers<small>generation</small></div></div><span class="arr">→</span>
+          <div class="grp"><div class="node">Local NVIDIA GPU</div><div class="node store">Local storage</div></div>
+        </div>
+        <div class="flow-label">Packaging</div>
+        <div class="flow">
+          <div class="node">Python + PySide6</div><span class="arr">→</span><div class="node">PyInstaller</div><span class="arr">→</span><div class="node">Inno Setup</div><span class="arr">→</span><div class="node">Setup.exe</div><span class="arr">→</span><div class="node">Manufacturing PC</div>
+        </div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Layer</th><th>Technology</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td>Desktop UI</td><td>PySide6 / Qt</td><td>Native application interface</td></tr>
+            <tr><td>Application</td><td>Python</td><td>Application and workspace logic</td></tr>
+            <tr><td>Database</td><td>SQLite</td><td>Local projects, configurations, history</td></tr>
+            <tr><td>Training</td><td>Kohya_ss / sd-scripts</td><td>Local LoRA training</td></tr>
+            <tr><td>Generation</td><td>Hugging Face Diffusers</td><td>Txt2img / img2img</td></tr>
+            <tr><td>ML runtime</td><td>PyTorch + CUDA</td><td>Local GPU processing</td></tr>
+            <tr><td>Storage</td><td>Local filesystem</td><td>Images, LoRAs, generated datasets</td></tr>
+            <tr><td>Packaging &amp; install</td><td>PyInstaller, Inno Setup, auto-updater</td><td>Windows installer and updates</td></tr>
+            <tr><td>Future</td><td>Flower</td><td>Federated learning between sites</td></tr>
+          </tbody>
+        </table></div>
+        <p class="caption"><b>Table 13.</b> Proposed stack, local desktop deployment.</p>
+      </div>
+
+      <h3 id="s9-0"><span class="sub-num">9.2</span>Per-run experiment report</h3>
       <div class="table-wrap"><table>
         <thead><tr><th>Field</th><th>Contents</th></tr></thead>
         <tbody>
@@ -566,8 +702,8 @@
           <tr><td>Recommendation</td><td>Keep or reject, with the agents' rationale, for human approval</td></tr>
         </tbody>
       </table></div>
-      <p class="caption"><b>Table 9.</b> Report schema (draft).</p>
-      <h3 id="s9-1"><span class="sub-num">9.2</span>Demo walkthrough</h3>
+      <p class="caption"><b>Table 14.</b> Report schema (draft).</p>
+      <h3 id="s9-1"><span class="sub-num">9.3</span>Demo walkthrough</h3>
       <div class="video" id="demoVideo"><div class="ph" style="height:100%;aspect-ratio:auto">Paste a YouTube embed URL into DEMO_VIDEO in the page script</div></div>
       <p class="caption" style="margin-top:8px"><b>Video 1.</b> A user generates a new defect class with the tuning assistant.</p>
     </section>
@@ -581,11 +717,14 @@
         <li>Generate → critique → refine captioning loop for defect descriptions.</li>
         <li>On-site testing at TE Connectivity's Dongguan facility.</li>
         <li>Integration with real-time production inspection pipelines.</li>
-        <li><a href="#s10-1">App UI/UX improvements</a>: a more intuitive AITK web app for non-specialist users (below).</li>
+        <li><b>FLUX:</b> test FLUX.1 dev once suitable hardware and a compatible training setup are available.</li>
+        <li><b>Multi-GPU scaling:</b> add Celery workers, one per GPU, so training and generation jobs run in parallel.</li>
+        <li><b>Federated learning:</b> sites send LoRA weights instead of raw images to a central coordinator, which aggregates them into one global LoRA (e.g. with Flower).</li>
+        <li><a href="#s10-1">App UI/UX improvements</a>: a more intuitive app for non-specialist users (below).</li>
       </ul>
 
       <h3 id="s10-1"><span class="sub-num">10.1</span>App UI/UX improvements</h3>
-      <p>The AITK web app is the main way engineers will use the system, so it needs to be usable without generative-AI expertise.</p>
+      <p>The application (web or desktop) is the main way engineers will use the system, so it needs to be usable without generative-AI expertise.</p>
       <div class="grid g2">
         <div class="card"><h5>Guided, step-by-step workflow</h5><p>Clear instructions and explanations at every step, from uploading images to approving results, so first-time users know what to do next.</p></div>
         <div class="card"><h5>Agent assistant in the app</h5><p>Surface the agent's recommendations and rationale in plain language, so users can see why a setting was chosen before approving it.</p></div>
@@ -608,7 +747,7 @@
             <li>Understand the codebase, hyperparameters and outputs</li>
             <li>Identify pain points in the current workflow</li>
             <li>Literature review: industry generative models, agentic HPO, defect evaluation</li>
-            <li>Explore alternative models (RealVisXL, SDXL Inpainting; txt2img vs img2img)</li>
+            <li>Explore alternative models: Realistic Vision 5.1 txt2img vs img2img; FLUX deferred for hardware</li>
             <li>Design the AgentHPO architecture and define end-of-project goals</li>
           </ul>
         </div>
@@ -645,6 +784,10 @@
         <li>Hu, E. J. et al. (2021). <i>LoRA: Low-Rank Adaptation of Large Language Models.</i> arXiv:2106.09685.</li>
         <li>Heusel, M. et al. (2017). <i>GANs Trained by a Two Time-Scale Update Rule Converge to a Local Nash Equilibrium</i> (FID). NeurIPS.</li>
         <li>Bergmann, P. et al. (2019). <i>MVTec AD: A Comprehensive Real-World Dataset for Unsupervised Anomaly Detection.</i> CVPR.</li>
+        <li>Realistic Vision V5.1. <a href="https://huggingface.co/SG161222/Realistic_Vision_V5.1_noVAE">Hugging Face</a>.</li>
+        <li>FLUX.1 [dev], Black Forest Labs. <a href="https://huggingface.co/black-forest-labs/FLUX.1-dev">Hugging Face</a>.</li>
+        <li>Kohya_ss. <a href="https://github.com/bmaltais/kohya_ss">GitHub</a>; sd-scripts, <a href="https://github.com/kohya-ss/sd-scripts">GitHub</a>.</li>
+        <li>Flower: a friendly federated learning framework. <a href="https://flower.ai">flower.ai</a>.</li>
         <li>IndusAgent. <a href="https://arxiv.org/abs/2605.20682">arXiv:2605.20682</a>.</li>
         <li>Agent-driven hyperparameter optimisation. <a href="https://arxiv.org/abs/2505.19205">arXiv:2505.19205</a>; <a href="https://medium.com/@chaithanyavijaya/agent-driven-hyperparameter-optimization-framework-dbf968daab56">Agent-Driven Hyperparameter Optimization Framework</a> (Medium).</li>
         <li>Recommending agent reference. <a href="https://arxiv.org/abs/2607.04433">arXiv:2607.04433</a>.</li>
@@ -667,7 +810,7 @@
         <div class="card"><h5>Roy</h5><p>Model optimisation</p></div>
         <div class="card"><h5>—</h5><p>Recommender / Decision agents</p></div>
       </div>
-      <p style="color:var(--muted);font-size:14px">Supervised by Dr Tang Kok Zuea, NUS College of Design and Engineering. In collaboration with TE Connectivity.</p>
+      <p style="color:var(--muted);font-size:14px">Supervised by Dr Tang Kok Zuea (NUS College of Design and Engineering) and Keith Tan. In collaboration with TE Connectivity.</p>
     </section>
 
     <footer>© 2026 NUS EDIC FYP Team · AI Synthetic Generation of Defect Images. A final-year project at the National University of Singapore in collaboration with TE Connectivity. Work in progress; results and plans are subject to change.</footer>
@@ -852,10 +995,10 @@ const TIMELINE = {
     { label: 'Literature review', items: [
       { s:0.5, e:3.5, sem:'s1', t:'Literature review', pts:['Generative models used in industry (diffusion, LoRA, GANs)','Agent-driven hyperparameter optimisation','Anomaly detection and image-quality evaluation'] } ] },
     { label: 'Model exploration', items: [
-      { s:1, e:4, sem:'s1', t:'Explore alternative models', pts:['RealVisXL V5.0 (text-to-image)','SDXL Inpainting 0.1 (image-to-image)','Compare quality and speed per defect class'] },
+      { s:1, e:4, sem:'s1', t:'Explore alternative models', pts:['Migrate LoRA training to Kohya_ss','Realistic Vision 5.1: txt2img vs img2img','FLUX deferred (hardware limits)'] },
       { s:5, e:6.5, sem:'s2', planned:true, t:'Finalise & optimise model', pts:['Lock in the base model','Tune LoRA rank, learning rate and steps'] } ] },
     { label: 'Architecture & agent', items: [
-      { s:2, e:4.5, sem:'s1', t:'Design AgentHPO architecture', pts:['Define agent roles and the control loop','Draft the evaluation matrix (acceptable vs unacceptable)','Set end-of-project goals'] },
+      { s:2, e:4.5, sem:'s1', t:'Design AgentHPO architecture', pts:['Define agent roles and the control loop','Draft the evaluation matrix (acceptable vs unacceptable)','Propose deployment options: centralised web vs local desktop','Set end-of-project goals'] },
       { s:5, e:7.5, sem:'s2', planned:true, t:'Build the agents', pts:['Recommender, Config Validator, Evaluator, Decision','Budget enforcement and run logging','Connect to the training pipeline'] } ] },
     { label: 'Evaluation & validation', items: [
       { s:5.5, e:7, sem:'s2', planned:true, t:'Baselines & evaluation pipeline', pts:['Real-only baseline: recall, precision, FPR','Reproduce the previous-workflow dataset','FID, LPIPS, diversity and memorisation scoring'] },
@@ -936,3 +1079,4 @@ if (DEMO_VIDEO) document.getElementById('demoVideo').innerHTML = `<iframe src="$
 </script>
 </body>
 </html>
+
