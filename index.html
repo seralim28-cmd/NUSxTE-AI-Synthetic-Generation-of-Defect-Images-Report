@@ -132,15 +132,6 @@
   .loop-desc{font-size:14px;color:var(--muted);flex:1;min-width:220px}
   .loop-desc b{color:var(--text)}
 
-  /* Variation explorer */
-  .explorer{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:18px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin:18px 0}
-  .ctrl{margin-bottom:16px}
-  .ctrl label{display:flex;justify-content:space-between;font-size:13px;font-weight:600;margin-bottom:6px}
-  .ctrl label span{font:400 12.5px var(--mono);color:var(--accent)}
-  .ctrl input[type=range]{width:100%;accent-color:var(--accent)}
-  .ctrl select{width:100%;padding:7px 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);font:14px var(--sans)}
-  .prompt-box{font:12.5px/1.6 var(--mono);background:var(--surface-2);border-radius:8px;padding:10px 12px;color:var(--muted);word-break:break-word}
-  .explorer .ph{aspect-ratio:1/1;border-radius:8px;border:1px solid var(--border)}
 
   /* Chart */
   .chart{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin:18px 0}
@@ -220,7 +211,6 @@
     main{padding:24px 16px 80px}
     .topnav nav{display:none}
     .g3,.g4{grid-template-columns:repeat(2,minmax(0,1fr))}
-    .explorer{grid-template-columns:minmax(0,1fr)}
   }
   @media (max-width:560px){
     .g2,.g3,.g4{grid-template-columns:1fr}
@@ -235,8 +225,7 @@
   <a class="brand" href="#top"><span class="brand-mark">SD</span>Synthetic Defect Generation</a>
   <nav>
     <a href="#top" class="active">Report</a>
-    <a href="#section-7">Explorer</a>
-    <a href="#section-9">App</a>
+    <a href="#s9-d">App</a>
     <a href="#section-timeline">Timeline</a>
     <a href="#section-13">Team</a>
   </nav>
@@ -316,9 +305,9 @@
         <tbody>
           <tr><td>Results depend on expert judgement: defect descriptions, training duration, settings, checkpoint, which images to keep</td><td>Dataset review and captioning (Section 04); AgentHPO tuning (Section 06)</td></tr>
           <tr><td>SDXL needs &gt;12 GB VRAM, and text-to-image generation can get defect geometry wrong</td><td>Lighter photorealistic model and image-to-image generation (Section 05)</td></tr>
-          <tr><td>No automated batch or per-image quality scoring</td><td>FID, LPIPS, diversity and memorisation scoring (Section 08)</td></tr>
-          <tr><td>Realism never validated against downstream inspection performance</td><td>Three-way downstream comparison (Section 08)</td></tr>
-          <tr><td>No record of why a run was kept or rejected</td><td>Per-run experiment report (Section 09)</td></tr>
+          <tr><td>No automated batch or per-image quality scoring</td><td>FID, LPIPS, diversity and memorisation scoring (Section 07)</td></tr>
+          <tr><td>Realism never validated against downstream inspection performance</td><td>Three-way downstream comparison (Section 07)</td></tr>
+          <tr><td>No record of why a run was kept or rejected</td><td>Per-run experiment report (Section 08)</td></tr>
         </tbody>
       </table></div>
       <p class="caption"><b>Table 2.</b> Mapping prior limitations to project deliverables.</p>
@@ -657,37 +646,13 @@
       <p>Training a LoRA for many configurations is expensive, so tuning and downstream testing are separated.</p>
       <ol>
         <li><b>Stage 1, AgentHPO:</b> about 15–20 trials search for strong image-generation configurations; the top few are retained.</li>
-        <li><b>Stage 2, downstream validation:</b> only the retained configurations go through the full inspection-model experiment (Section 08).</li>
+        <li><b>Stage 2, downstream validation:</b> only the retained configurations go through the full inspection-model experiment (Section 07).</li>
       </ol>
-    </section>
-
-    <!-- ===================== 07 ===================== -->
-    <section class="sec" id="section-7" data-title="Controllable Variation (Future)">
-      <div class="sec-head"><span class="sec-num">07</span><h2>Controllable Variation <span style="font-size:13px;font-weight:500;color:var(--warn);border:1px solid currentColor;border-radius:999px;padding:2px 10px;vertical-align:middle">Future goal</span></h2></div>
-      <div class="callout todo"><strong>Future goal</strong>Controllable variation comes from TE Connectivity's original project brief and is outside the current semester's scope. It will be explored once the core pipeline, agent and validation are in place.</div>
-      <p>Inspection models must handle defects at different severities, orientations and lighting conditions. The explorer below previews how generated samples could be browsed along each axis.</p>
-      <div class="explorer">
-        <div class="ph" id="expImg">images/variations/misaligned_s2_o0_l1.png</div>
-        <div>
-          <div class="ctrl"><label>Defect class</label>
-            <select id="expClass">
-              <option value="single">NG-Single</option>
-              <option value="nosolder">NG-No Solder</option>
-              <option value="notenough">NG-Not Enough Solder</option>
-              <option value="misaligned" selected>NG-Misaligned</option>
-            </select></div>
-          <div class="ctrl"><label>Severity <span id="vSev">medium</span></label><input type="range" id="expSev" min="0" max="4" value="2"></div>
-          <div class="ctrl"><label>Orientation <span id="vOri">0°</span></label><input type="range" id="expOri" min="0" max="3" value="0"></div>
-          <div class="ctrl"><label>Lighting <span id="vLight">nominal</span></label><input type="range" id="expLight" min="0" max="2" value="1"></div>
-          <div class="ctrl"><label>Prompt</label><div class="prompt-box" id="expPrompt"></div></div>
-        </div>
-      </div>
-      <div class="callout"><strong>How to connect real images</strong>Save generated samples as <code>images/variations/{class}_s{0-4}_o{0-3}_l{0-2}.png</code> and the explorer will load them automatically. Until then it shows the expected file path.</div>
     </section>
 
     <!-- ===================== 08 ===================== -->
     <section class="sec" id="section-8" data-title="Evaluation">
-      <div class="sec-head"><span class="sec-num">08</span><h2>Evaluation</h2></div>
+      <div class="sec-head"><span class="sec-num">07</span><h2>Evaluation</h2></div>
       <p>Synthetic images are judged on two questions: <b>are they good images?</b> (realism, diversity, originality) and <b>do they help?</b> (downstream inspection performance on held-out real defects).</p>
       <div class="table-wrap"><table>
         <thead><tr><th>Metric</th><th>Measures</th><th>Better</th></tr></thead>
@@ -700,11 +665,11 @@
       </table></div>
       <p class="caption"><b>Table 11.</b> Image-quality metrics combined into the Evaluator's score.</p>
 
-      <h3 id="s8-1"><span class="sub-num">8.1</span>Image quality (FID)</h3>
+      <h3 id="s8-1"><span class="sub-num">7.1</span>Image quality (FID)</h3>
       <div class="chart" id="fidChart"></div>
       <p class="caption"><b>Figure <span data-figref="fid"></span>.</b> FID per class, lower is better. Placeholder values; edit <code>FID_DATA</code> in the page script.</p>
 
-      <h3 id="s8-2"><span class="sub-num">8.2</span>Downstream validation</h3>
+      <h3 id="s8-2"><span class="sub-num">7.2</span>Downstream validation</h3>
       <p>The inspection model is trained on three datasets and tested on the same held-out real defects.</p>
       <div class="table-wrap"><table>
         <thead><tr><th>Training dataset</th><th style="text-align:right">Recall</th><th style="text-align:right">Precision</th><th style="text-align:right">False-positive rate</th></tr></thead>
@@ -716,16 +681,27 @@
       </table></div>
       <p class="caption"><b>Table 12.</b> Downstream inspection-model performance on held-out real defects.</p>
 
-      <h3 id="s8-3"><span class="sub-num">8.3</span>Domain gap analysis</h3>
-      <figure data-fig="Feature-space embedding of real vs synthetic images (t-SNE / UMAP)"><div class="frame"><div class="ph">images/embedding.png: real vs synthetic feature embedding</div></div><figcaption>Real and synthetic images in a shared feature space.</figcaption></figure>
     </section>
 
-    <!-- ===================== 09 ===================== -->
-    <section class="sec" id="section-9" data-title="Application &amp; Reporting">
-      <div class="sec-head"><span class="sec-num">09</span><h2>Application &amp; Reporting</h2></div>
-      <p>The tool lets users create a workspace, upload images, define classes, train LoRA models (AgentHPO or manual) and generate synthetic images with txt2img or img2img. Two ways of deploying it are being considered; each run produces an experiment report.</p>
+    <!-- ===================== 10 ===================== -->
+    <section class="sec" id="section-10" data-title="Future Work">
+      <div class="sec-head"><span class="sec-num">08</span><h2>Future Work</h2></div>
+      <ul>
+        <li>Automated preprocessing: background normalisation, illumination correction, ROI extraction.</li>
+        <li>Generate → critique → refine captioning loop for defect descriptions.</li>
+        <li>On-site testing at TE Connectivity's Dongguan facility.</li>
+        <li>Integration with real-time production inspection pipelines.</li>
+        <li><b>FLUX:</b> test FLUX.1 dev once suitable hardware and a compatible training setup are available.</li>
+        <li><b>Multi-GPU scaling:</b> add Celery workers, one per GPU, so training and generation jobs run in parallel.</li>
+        <li><b>Federated learning:</b> sites send LoRA weights instead of raw images to a central coordinator, which aggregates them into one global LoRA (e.g. with Flower).</li>
+        <li><a href="#s9-d">Application deployment</a>: centralised web or local desktop (below).</li>
+        <li><a href="#s9-0">Per-run experiment reports</a> with a keep/reject recommendation (below).</li>
+        <li><a href="#s10-1">App UI/UX improvements</a>: a more intuitive app for non-specialist users (below).</li>
+      </ul>
 
-      <h3 id="s9-d"><span class="sub-num">9.1</span>Deployment options</h3>
+      <p>The tool lets users create a workspace, upload images, define classes, train LoRA models (AgentHPO or manual) and generate synthetic images with txt2img or img2img. Two ways of deploying it are being considered, and each run would produce an experiment report.</p>
+
+      <h3 id="s9-d"><span class="sub-num">8.1</span>Deployment options</h3>
       <div class="table-wrap"><table>
         <thead><tr><th></th><th>1 · Centralised web</th><th>2 · Local desktop</th></tr></thead>
         <tbody>
@@ -807,7 +783,7 @@
         <p class="caption"><b>Table 15.</b> Proposed stack, local desktop deployment.</p>
       </div>
 
-      <h3 id="s9-0"><span class="sub-num">9.2</span>Per-run experiment report</h3>
+      <h3 id="s9-0"><span class="sub-num">8.2</span>Per-run experiment report</h3>
       <div class="table-wrap"><table>
         <thead><tr><th>Field</th><th>Contents</th></tr></thead>
         <tbody>
@@ -819,24 +795,8 @@
         </tbody>
       </table></div>
       <p class="caption"><b>Table 16.</b> Report schema (draft).</p>
-    </section>
 
-    <!-- ===================== 10 ===================== -->
-    <section class="sec" id="section-10" data-title="Future Work">
-      <div class="sec-head"><span class="sec-num">10</span><h2>Future Work</h2></div>
-      <ul>
-        <li>Automated preprocessing: background normalisation, illumination correction, ROI extraction.</li>
-        <li><a href="#section-7">Controllable variation</a>: severity, orientation and lighting control, including severity interpolation and multi-class joint conditioning.</li>
-        <li>Generate → critique → refine captioning loop for defect descriptions.</li>
-        <li>On-site testing at TE Connectivity's Dongguan facility.</li>
-        <li>Integration with real-time production inspection pipelines.</li>
-        <li><b>FLUX:</b> test FLUX.1 dev once suitable hardware and a compatible training setup are available.</li>
-        <li><b>Multi-GPU scaling:</b> add Celery workers, one per GPU, so training and generation jobs run in parallel.</li>
-        <li><b>Federated learning:</b> sites send LoRA weights instead of raw images to a central coordinator, which aggregates them into one global LoRA (e.g. with Flower).</li>
-        <li><a href="#s10-1">App UI/UX improvements</a>: a more intuitive app for non-specialist users (below).</li>
-      </ul>
-
-      <h3 id="s10-1"><span class="sub-num">10.1</span>App UI/UX improvements</h3>
+      <h3 id="s10-1"><span class="sub-num">8.3</span>App UI/UX improvements</h3>
       <p>The application (web or desktop) is the main way engineers will use the system, so it needs to be usable without generative-AI expertise.</p>
       <div class="grid g2">
         <div class="card"><h5>Guided, step-by-step workflow</h5><p>Clear instructions and explanations at every step, from uploading images to approving results, so first-time users know what to do next.</p></div>
@@ -848,7 +808,7 @@
 
     <!-- ===================== TIMELINE ===================== -->
     <section class="sec" id="section-timeline" data-title="Project Timeline">
-      <div class="sec-head"><span class="sec-num">11</span><h2>Project Timeline</h2></div>
+      <div class="sec-head"><span class="sec-num">09</span><h2>Project Timeline</h2></div>
       <p>The project runs from August 2026 to May 2027 across two semesters. Semester 1 is for understanding the existing system, reading the literature, exploring models and designing the architecture. Semester 2 is for building, validating and delivering it.</p>
 
       <div class="sem-cols">
@@ -878,7 +838,7 @@
         </div>
       </div>
 
-      <h3 id="st-1"><span class="sub-num">11.1</span>Gantt chart</h3>
+      <h3 id="st-1"><span class="sub-num">9.1</span>Gantt chart</h3>
       <div class="sem-tabs tabs" id="semFilter">
         <button aria-selected="true" data-sem="all">Full project</button>
         <button aria-selected="false" data-sem="s1">Semester 1</button>
@@ -891,7 +851,7 @@
 
     <!-- ===================== 11 ===================== -->
     <section class="sec" id="section-11" data-title="References">
-      <div class="sec-head"><span class="sec-num">12</span><h2>References</h2></div>
+      <div class="sec-head"><span class="sec-num">10</span><h2>References</h2></div>
       <ol class="refs">
         <li>Podell, D. et al. (2023). <i>SDXL: Improving Latent Diffusion Models for High-Resolution Image Synthesis.</i> arXiv:2307.01952.</li>
         <li>Hu, E. J. et al. (2021). <i>LoRA: Low-Rank Adaptation of Large Language Models.</i> arXiv:2106.09685.</li>
@@ -910,13 +870,13 @@
 
     <!-- ===================== 12 ===================== -->
     <section class="sec" id="section-12" data-title="List of Figures">
-      <div class="sec-head"><span class="sec-num">13</span><h2>List of Figures</h2></div>
+      <div class="sec-head"><span class="sec-num">11</span><h2>List of Figures</h2></div>
       <ul id="lof"></ul>
     </section>
 
     <!-- ===================== 13 ===================== -->
     <section class="sec" id="section-13" data-title="Team">
-      <div class="sec-head"><span class="sec-num">14</span><h2>Team</h2></div>
+      <div class="sec-head"><span class="sec-num">12</span><h2>Team</h2></div>
       <div class="grid g4">
         <div class="card"><h5>Seraphine</h5><p>MSE · Evaluator agent: evaluation matrix and acceptance rules</p></div>
         <div class="card"><h5>Chin</h5><p>Model optimisation</p></div>
@@ -1074,27 +1034,6 @@ addEventListener('keydown', e => { if (e.key === 'Escape') lb.classList.remove('
   };
 })();
 
-// Variation explorer
-(function(){
-  const sev = ['minimal','mild','medium','severe','extreme'];
-  const ori = ['0°','90°','180°','270°'];
-  const light = ['dim','nominal','bright'];
-  const names = { single:'single pin', nosolder:'no solder', notenough:'insufficient solder', misaligned:'misaligned pins' };
-  const $ = id => document.getElementById(id);
-  function update(){
-    const c = $('expClass').value, s = +$('expSev').value, o = +$('expOri').value, l = +$('expLight').value;
-    $('vSev').textContent = sev[s]; $('vOri').textContent = ori[o]; $('vLight').textContent = light[l];
-    $('expPrompt').textContent = `<CLS_${c}>, solder pin weld, ${names[c]}, ${sev[s]} severity, rotated ${ori[o]}, ${light[l]} lighting, macro inspection photo`;
-    const path = `images/variations/${c}_s${s}_o${o}_l${l}.png`;
-    const box = $('expImg');
-    const img = new Image();
-    img.onload = () => { box.innerHTML = ''; box.style.background = 'none'; img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:8px'; box.appendChild(img); };
-    img.onerror = () => { box.style.background = ''; box.textContent = path; };
-    img.src = path;
-  }
-  ['expClass','expSev','expOri','expLight'].forEach(id => $(id).addEventListener('input', update));
-  update();
-})();
 
 // FID chart
 (function(){
