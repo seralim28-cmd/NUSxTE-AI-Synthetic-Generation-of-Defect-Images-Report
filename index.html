@@ -302,14 +302,14 @@
         <div class="card"><h5>1 · Model optimisation</h5><p>Improve on the UROP SDXL-LoRA model; now using Realistic Vision 5.1 with text-to-image and image-to-image generation.</p></div>
         <div class="card"><h5>2 · Dataset review</h5><p>Check uploads for sufficiency, duplicates and consistency; turn brief notes into visually specific captions.</p></div>
         <div class="card"><h5>3 · Agent-assisted tuning</h5><p>Recommend training settings within a compute budget (AgentHPO: Recommender, Evaluator, Decision agents).</p></div>
-        <div class="card"><h5>4 · Improved evaluation</h5><p>Batch and per-image scoring for realism, diversity and originality; flag overfitting and memorisation.</p></div>
+        <div class="card"><h5>4 · Improved evaluation</h5><p>A YOLO classifier trained on real TE images checks every generated image; pass rate and confidence score each run.</p></div>
         <div class="card"><h5>5 · Downstream validation</h5><p>Does the inspection model improve? Real-only vs previous workflow vs agent-optimised, on held-out real defects.</p></div>
         <div class="card"><h5>6 · Reporting</h5><p>Per-run experiment report with a keep/reject recommendation, integrated into the AITK web app.</p></div>
       </div>
 
       <h3 id="s1-2"><span class="sub-num">2.2</span>Key results at a glance</h3>
       <div class="grid g4">
-        <div class="card stat"><div class="v" data-placeholder>—</div><div class="l">Best FID</div></div>
+        <div class="card stat"><div class="v" data-placeholder>—</div><div class="l">Best YOLO pass rate</div></div>
         <div class="card stat"><div class="v" data-placeholder>—</div><div class="l">Rare-defect recall</div></div>
         <div class="card stat"><div class="v" data-placeholder>—</div><div class="l">False-positive rate</div></div>
         <div class="card stat"><div class="v" data-placeholder>—</div><div class="l">HPO trials to best config</div></div>
@@ -342,7 +342,7 @@
         <tbody>
           <tr><td>Results depend on expert judgement: defect descriptions, training duration, settings, checkpoint, which images to keep</td><td>Dataset review and captioning (Section 05); AgentHPO tuning (Section 07)</td></tr>
           <tr><td>SDXL needs &gt;12 GB VRAM, and text-to-image generation can get defect geometry wrong</td><td>Lighter photorealistic model and image-to-image generation (Section 06)</td></tr>
-          <tr><td>No automated batch or per-image quality scoring</td><td>FID, LPIPS, diversity and memorisation scoring (Section 08)</td></tr>
+          <tr><td>No automated batch or per-image quality scoring</td><td>YOLO-based per-image checks and batch pass rate (Section 08)</td></tr>
           <tr><td>Realism never validated against downstream inspection performance</td><td>Three-way downstream comparison (Section 08)</td></tr>
           <tr><td>No record of why a run was kept or rejected</td><td>Per-run experiment report (Section 09)</td></tr>
         </tbody>
@@ -617,7 +617,7 @@
         <figure data-fig="Img2img reference and generated pairs (Realistic Vision 5.1)"><div class="frame"><div class="ph">images/rv51_img2img_pairs.png</div></div><figcaption>Img2img: reference image (left) and generated image (right).</figcaption></figure>
       </div>
       <div class="table-wrap"><table>
-        <thead><tr><th>Model</th><th>Mode</th><th style="text-align:right">FID</th><th style="text-align:right">Time / image (s)</th><th>Qualitative notes</th></tr></thead>
+        <thead><tr><th>Model</th><th>Mode</th><th style="text-align:right">YOLO pass rate</th><th style="text-align:right">Time / image (s)</th><th>Qualitative notes</th></tr></thead>
         <tbody>
           <tr><td>SDXL + LoRA (UROP)</td><td>txt2img</td><td class="num">—</td><td class="num">—</td><td>Baseline</td></tr>
           <tr><td>Realistic Vision 5.1</td><td>txt2img</td><td class="num">—</td><td class="num">—</td><td>Class consistency unreliable for NG-Misaligned</td></tr>
@@ -635,14 +635,28 @@
 
       <h3 id="s6-1"><span class="sub-num">7.1</span>Agents</h3>
       <div class="grid g3">
-        <div class="card"><h5>Recommender</h5><p>Proposes the next LoRA training configuration from dataset information, the search space, experiment history and decision feedback. Rules from trial-and-error cap risky values (e.g. a parameter known to deform images).</p></div>
-        <div class="card"><h5>Evaluator</h5><p>Trains and generates with the proposed configuration, then scores the images quantitatively (FID, LPIPS, diversity, memorisation) against an evaluation matrix of acceptable vs unacceptable. No LLM judges images visually.</p></div>
-        <div class="card"><h5>Decision</h5><p>Analyses the experiment history and chooses <code>EXPLORE</code> (search a new region), <code>EXPLOIT</code> (search near good trials) or <code>TERMINATE</code>. Accepted configurations are saved with their image set.</p></div>
+        <div class="card"><h5>Recommender</h5><p>Proposes the next LoRA training configuration with Bayesian optimisation (Optuna TPE), balancing exploration and exploitation. Uses dataset metadata, the search space, past trial results and Decision feedback. Needs no GPU and no LLM; it only picks the next experiment.</p></div>
+        <div class="card"><h5>Evaluator</h5><p>Checks every generated image with a YOLO classifier trained only on real TE images. An image passes if YOLO predicts the intended class with confidence of 0.8 or more. The batch pass rate sets the verdict: Accept, Borderline or Reject (Section 08).</p></div>
+        <div class="card"><h5>Decision</h5><p>Acts on the verdict and the experiment history: <b>Accept</b> saves the config and images, <b>Borderline</b> triggers <code>EXPLOIT</code> (search near this run), <b>Reject</b> triggers <code>EXPLORE</code> (search elsewhere). It can also <code>TERMINATE</code> when the budget is spent.</p></div>
       </div>
-      <div class="callout"><strong>Configuration Validator</strong>LLM output is not guaranteed to be valid, so a deterministic validator sits between the Recommender and training. It rejects settings outside allowed ranges and enforces the run and GPU-hour budget.</div>
-      <div class="callout todo"><strong>Open question (10 Oct)</strong>Evaluate an SVM and a genetic algorithm with Bayesian optimisation as alternatives to a local LLM in the agent loop.</div>
+      <div class="callout"><strong>Configuration Validator</strong>A deterministic validator sits between the Recommender and training. It rejects out-of-range or duplicate settings and enforces the run and GPU-hour budget.</div>
+      <div class="callout"><strong>Design choice: no LLM required</strong>The closed loop runs on numbers alone: Optuna TPE proposes, YOLO judges, and fixed rules decide. An LLM could be added later to explain decisions, but nothing depends on one.</div>
 
-      <h3 id="s6-2"><span class="sub-num">7.2</span>Control loop</h3>
+      <h3 id="s6-ss"><span class="sub-num">7.2</span>Search space</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Parameter</th><th>Proposed range</th><th>Type</th></tr></thead>
+        <tbody>
+          <tr><td>Learning rate</td><td>1e-6 to 5e-4</td><td>Log-scale continuous</td></tr>
+          <tr><td>LoRA rank</td><td>4, 8, 16, 32</td><td>Categorical</td></tr>
+          <tr><td>Training epochs</td><td>10 to 50</td><td>Integer</td></tr>
+          <tr><td>LR scheduler</td><td>Constant, linear, cosine</td><td>Categorical</td></tr>
+          <tr><td>Gradient accumulation</td><td>1, 2, 4</td><td>Categorical</td></tr>
+        </tbody>
+      </table></div>
+      <p class="caption"><b>Table 11.</b> Recommender search space. Ranges are illustrative and will be checked against the training code.</p>
+      <p>The tuner will be compared against the manual defaults and against random search, using the same number of training trials. It will track best quality against trials and wall time, and log invalid or failed configurations.</p>
+
+      <h3 id="s6-2"><span class="sub-num">7.3</span>Control loop</h3>
       <p>Step through one iteration of the loop:</p>
       <div class="loop">
         <svg viewBox="0 0 760 300" role="img" aria-label="Agent control loop diagram">
@@ -658,7 +672,7 @@
           <g class="node" data-n="0"><rect x="20" y="30" width="170" height="60" rx="10"/><text x="105" y="56" text-anchor="middle">Recommender</text><text class="s" x="105" y="74" text-anchor="middle">propose next config</text></g>
           <g class="node" data-n="1"><rect x="270" y="30" width="170" height="60" rx="10"/><text x="355" y="56" text-anchor="middle">Config Validator</text><text class="s" x="355" y="74" text-anchor="middle">ranges + budget check</text></g>
           <g class="node" data-n="2"><rect x="520" y="30" width="170" height="60" rx="10"/><text x="605" y="56" text-anchor="middle">Train + Generate</text><text class="s" x="605" y="74" text-anchor="middle">LoRA run (Kohya_ss)</text></g>
-          <g class="node" data-n="3"><rect x="520" y="200" width="170" height="60" rx="10"/><text x="605" y="226" text-anchor="middle">Evaluator</text><text class="s" x="605" y="244" text-anchor="middle">FID · LPIPS · diversity</text></g>
+          <g class="node" data-n="3"><rect x="520" y="200" width="170" height="60" rx="10"/><text x="605" y="226" text-anchor="middle">Evaluator</text><text class="s" x="605" y="244" text-anchor="middle">YOLO class + confidence</text></g>
           <g class="node" data-n="4"><rect x="270" y="200" width="170" height="60" rx="10"/><text x="355" y="226" text-anchor="middle">Experiment history</text><text class="s" x="355" y="244" text-anchor="middle">JSONL run log</text></g>
           <g class="node" data-n="5"><rect x="20" y="200" width="170" height="60" rx="10"/><text x="105" y="226" text-anchor="middle">Decision</text><text class="s" x="105" y="244" text-anchor="middle">explore · exploit · terminate</text></g>
         </svg>
@@ -670,16 +684,19 @@
       </div>
       <p class="caption"><b>Figure <span data-figref="loop"></span>.</b> One iteration of the agentic tuning loop. Training runs exactly as configured; the loop repeats until the budget is spent or the Decision agent terminates.</p>
 
-      <h3 id="s6-3"><span class="sub-num">7.3</span>Example decision log</h3>
+      <h3 id="s6-3"><span class="sub-num">7.4</span>Example decision log</h3>
 <pre style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;overflow-x:auto;font:12.5px/1.6 var(--mono);margin:18px 0">{
   "run": 7,
   "class": "NG-Misaligned",
+  "verdict": "Borderline",
+  "pass_rate": "—",
+  "mean_confidence": "—",
   "action": "EXPLOIT",
   "config": { "network_dim": 32, "unet_lr": "—", "epochs": "—" },
   "rationale": "— (placeholder: agent's reasoning for this decision)"
 }</pre>
 
-      <h3 id="s6-4"><span class="sub-num">7.4</span>Two-stage evaluation</h3>
+      <h3 id="s6-4"><span class="sub-num">7.5</span>Two-stage evaluation</h3>
       <p>Training a LoRA for many configurations is expensive, so tuning and downstream testing are separated.</p>
       <ol>
         <li><b>Stage 1, AgentHPO:</b> about 15–20 trials search for strong image-generation configurations; the top few are retained.</li>
@@ -690,24 +707,43 @@
     <!-- ===================== 08 ===================== -->
     <section class="sec" id="section-8" data-title="Evaluation">
       <div class="sec-head"><span class="sec-num">08</span><h2>Evaluation</h2></div>
-      <p>Synthetic images are judged on two questions: <b>are they good images?</b> (realism, diversity, originality) and <b>do they help?</b> (downstream inspection performance on held-out real defects).</p>
+      <p>Generated images are judged on two questions: <b>does each image show the intended defect?</b> (a YOLO classifier trained on real TE images) and <b>do the images help?</b> (downstream inspection performance on held-out real defects).</p>
+
+      <h3 id="s8-0"><span class="sub-num">8.1</span>YOLO judge</h3>
       <div class="table-wrap"><table>
-        <thead><tr><th>Metric</th><th>Measures</th><th>Better</th></tr></thead>
+        <thead><tr><th>#</th><th>Step</th><th>What</th><th>Note</th></tr></thead>
         <tbody>
-          <tr><td>FID</td><td>Similarity of real and generated feature distributions</td><td>Lower</td></tr>
-          <tr><td>LPIPS</td><td>Perceptual difference between images</td><td>—</td></tr>
-          <tr><td>Diversity</td><td>Variation within the generated set</td><td>Higher</td></tr>
-          <tr><td>Memorisation / originality</td><td>Whether outputs copy training images</td><td>Less copying</td></tr>
+          <tr><td>1</td><td>Define classes</td><td>OK, NG-Single, NG-No solder, NG-Not enough solder, NG-Misaligned</td><td>One-line rule per class, confirmed with TE</td></tr>
+          <tr><td>2</td><td>Train the judge</td><td>YOLO classifier (size n or s) on real TE images only</td><td>YOLO26 or YOLO11; never trained on synthetic images</td></tr>
+          <tr><td>3</td><td>Check the judge</td><td>Recall of at least 90% for every class on held-out real images</td><td>If not, fix labels or add real images first</td></tr>
+          <tr><td>4</td><td>Score images</td><td>Pass if predicted class = intended class and confidence ≥ 0.8</td><td>Low confidence catches broken images</td></tr>
         </tbody>
       </table></div>
-      <p class="caption"><b>Table 11.</b> Image-quality metrics combined into the Evaluator's score.</p>
+      <p class="caption"><b>Table 12.</b> Setting up and using the YOLO judge.</p>
+      <div class="callout"><strong>Broken images</strong>A classifier always picks a class, so garbled images are caught by the confidence threshold. If some still get through, a sixth "Invalid" class trained on bad generations can be added.</div>
 
-      <h3 id="s8-1"><span class="sub-num">8.1</span>Image quality (FID)</h3>
+      <h3 id="s8-1"><span class="sub-num">8.2</span>Batch metrics &amp; verdict</h3>
+      <p>Scored once per run and class. The pass rate sets the verdict sent to the Decision agent; images that fail are discarded or set aside for checking.</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th></th><th>Metric</th><th>Target</th><th>Tool</th></tr></thead>
+        <tbody>
+          <tr><td>M1</td><td>Pass rate</td><td>Accept ≥ 80%; borderline 50–80%; reject &lt; 50%</td><td>YOLO classifier</td></tr>
+          <tr><td>M2</td><td>Mean confidence</td><td>Higher than the previous run</td><td>YOLO classifier</td></tr>
+          <tr><td>M3</td><td>Downstream gain</td><td>A separate classifier trained on real + synthetic beats real-only on held-out real images</td><td>A different classifier from the judge (Section 8.3)</td></tr>
+        </tbody>
+      </table></div>
+      <p class="caption"><b>Table 13.</b> Batch metrics. Thresholds are starting values, to be calibrated with TE; M3 is the final proof that the images help.</p>
+      <div class="grid g3">
+        <div class="card" style="border-top:3px solid var(--ok)"><h5>Accept</h5><p>Pass rate ≥ 80%. Save the config and images.</p></div>
+        <div class="card" style="border-top:3px solid var(--warn)"><h5>Borderline</h5><p>Pass rate 50–80%. Exploit nearby settings.</p></div>
+        <div class="card" style="border-top:3px solid #c0392b"><h5>Reject</h5><p>Pass rate &lt; 50%. Explore new settings.</p></div>
+      </div>
+      <div class="callout todo"><strong>Known limitation</strong>The YOLO judge does not catch copies of training images or near-identical batches. A near-duplicate check can be added later if needed.</div>
       <div class="chart" id="fidChart"></div>
-      <p class="caption"><b>Figure <span data-figref="fid"></span>.</b> FID per class, lower is better. Placeholder values; edit <code>FID_DATA</code> in the page script.</p>
+      <p class="caption"><b>Figure <span data-figref="fid"></span>.</b> YOLO pass rate per class (%), higher is better. Placeholder values; edit <code>PASS_RATE_DATA</code> in the page script.</p>
 
-      <h3 id="s8-2"><span class="sub-num">8.2</span>Downstream validation</h3>
-      <p>The inspection model is trained on three datasets and tested on the same held-out real defects.</p>
+      <h3 id="s8-2"><span class="sub-num">8.3</span>Downstream validation (M3)</h3>
+      <p>A separate inspection classifier (not the YOLO judge) is trained on three datasets and tested on the same held-out real defects.</p>
       <div class="table-wrap"><table>
         <thead><tr><th>Training dataset</th><th style="text-align:right">Recall</th><th style="text-align:right">Precision</th><th style="text-align:right">False-positive rate</th></tr></thead>
         <tbody>
@@ -716,7 +752,7 @@
           <tr><td><b>Real + synthetic (agent-optimised)</b></td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>
         </tbody>
       </table></div>
-      <p class="caption"><b>Table 12.</b> Downstream inspection-model performance on held-out real defects.</p>
+      <p class="caption"><b>Table 14.</b> Downstream inspection-model performance on held-out real defects.</p>
 
     </section>
 
@@ -748,7 +784,7 @@
           <tr><td>Scaling</td><td>Job queue; add GPU workers later</td><td>One PC per site; federated learning later</td></tr>
         </tbody>
       </table></div>
-      <p class="caption"><b>Table 13.</b> Deployment options at a glance.</p>
+      <p class="caption"><b>Table 15.</b> Deployment options at a glance.</p>
 
       <div class="tabs" role="tablist" data-tabs="deploy">
         <button role="tab" aria-selected="true" data-tab="web">Centralised web</button>
@@ -786,7 +822,7 @@
             <tr><td>Reverse proxy</td><td>Nginx</td><td>Routing and HTTPS</td></tr>
           </tbody>
         </table></div>
-        <p class="caption"><b>Table 14.</b> Proposed stack, centralised web deployment.</p>
+        <p class="caption"><b>Table 16.</b> Proposed stack, centralised web deployment.</p>
       </div>
       <div class="tab-panel" data-panel="desk">
         <p>A desktop version that lets each site train and generate on its own PC. Training images, models and generated datasets stay on the machine; nothing is stored on a central server. Users get a normal Windows app instead of Python scripts or command-line tools.</p>
@@ -817,7 +853,7 @@
             <tr><td>Future</td><td>Flower</td><td>Federated learning between sites</td></tr>
           </tbody>
         </table></div>
-        <p class="caption"><b>Table 15.</b> Proposed stack, local desktop deployment.</p>
+        <p class="caption"><b>Table 17.</b> Proposed stack, local desktop deployment.</p>
       </div>
 
       <h3 id="s9-0"><span class="sub-num">9.2</span>Per-run experiment report</h3>
@@ -826,12 +862,12 @@
         <tbody>
           <tr><td>Data</td><td>Classes, image counts, dataset-review results</td></tr>
           <tr><td>Settings</td><td>Final configuration and the trials that led to it</td></tr>
-          <tr><td>Quality</td><td>FID, LPIPS, diversity, memorisation scores</td></tr>
+          <tr><td>Quality</td><td>YOLO pass rate and mean confidence per class; verdict</td></tr>
           <tr><td>Validation</td><td>Downstream recall, precision, false-positive rate</td></tr>
           <tr><td>Recommendation</td><td>Keep or reject, with the agents' rationale, for human approval</td></tr>
         </tbody>
       </table></div>
-      <p class="caption"><b>Table 16.</b> Report schema (draft).</p>
+      <p class="caption"><b>Table 18.</b> Report schema (draft).</p>
 
       <h3 id="s10-1"><span class="sub-num">9.3</span>App UI/UX improvements</h3>
       <p>The application (web or desktop) is the main way engineers will use the system, so it needs to be usable without generative-AI expertise.</p>
@@ -892,6 +928,8 @@
       <ol class="refs">
         <li>Podell, D. et al. (2023). <i>SDXL: Improving Latent Diffusion Models for High-Resolution Image Synthesis.</i> arXiv:2307.01952.</li>
         <li>Hu, E. J. et al. (2021). <i>LoRA: Low-Rank Adaptation of Large Language Models.</i> arXiv:2106.09685.</li>
+        <li>Ultralytics YOLO (YOLO11 / YOLO26) image classification. <a href="https://docs.ultralytics.com/tasks/classify/">docs.ultralytics.com</a>.</li>
+        <li>Akiba, T. et al. (2019). <i>Optuna: A Next-generation Hyperparameter Optimization Framework.</i> KDD.</li>
         <li>Heusel, M. et al. (2017). <i>GANs Trained by a Two Time-Scale Update Rule Converge to a Local Nash Equilibrium</i> (FID). NeurIPS.</li>
         <li>Bergmann, P. et al. (2019). <i>MVTec AD: A Comprehensive Real-World Dataset for Unsupervised Anomaly Detection.</i> CVPR.</li>
         <li>Realistic Vision V5.1. <a href="https://huggingface.co/SG161222/Realistic_Vision_V5.1_noVAE">Hugging Face</a>.</li>
@@ -921,7 +959,8 @@
 
 <script>
 /* ======== EDIT THESE ======== */
-const FID_DATA = [            // lower is better; replace with real values
+const PASS_RATE_DATA = [      // YOLO pass rate in %, higher is better; replace with real values
+  { label: "OK",                   value: null },
   { label: "NG-Single",            value: null },
   { label: "NG-No Solder",         value: null },
   { label: "NG-Not Enough Solder", value: null },
@@ -1005,7 +1044,7 @@ document.querySelectorAll('[data-tabs]').forEach(group => {
     } else {
       el.textContent = n;
       const host = el.closest('p'); host.id = 'fig-' + n;
-      const title = { loop: 'Agentic tuning control loop', fid: 'FID per defect class' }[el.dataset.figref] || 'Figure';
+      const title = { loop: 'Agentic tuning control loop', fid: 'YOLO pass rate per defect class' }[el.dataset.figref] || 'Figure';
       items.push([n, title, host.id]);
     }
   });
@@ -1054,12 +1093,12 @@ addEventListener('keydown', e => { if (e.key === 'Escape') lb.classList.remove('
 // Agent loop stepper
 (function(){
   const steps = [
-    ['Recommender', 'proposes the next LoRA training configuration from dataset info, the search space, past runs and decision feedback.'],
+    ['Recommender', 'Optuna TPE proposes the next LoRA training configuration from dataset info, the search space, past runs and Decision feedback.'],
     ['Config Validator', 'deterministically rejects out-of-range settings and stops if the run or GPU-hour budget is spent.'],
     ['Train + Generate', 'the toolkit trains the LoRA and generates images exactly as configured.'],
-    ['Evaluator', 'scores the images on FID, LPIPS, diversity and memorisation against the evaluation matrix.'],
+    ['Evaluator', 'a YOLO classifier trained on real images checks each image (right class, confidence ≥ 0.8); the pass rate sets Accept, Borderline or Reject.'],
     ['Experiment history', 'the run, its settings and scores are logged as one JSONL line, so later decisions can build on it.'],
-    ['Decision', 'reviews the history and chooses EXPLORE, EXPLOIT or TERMINATE. On TERMINATE, the best runs go to downstream validation.'],
+    ['Decision', 'Accept saves the run; Borderline → EXPLOIT nearby settings; Reject → EXPLORE elsewhere; TERMINATE when the budget is spent. The best runs go to downstream validation.'],
   ];
   const nodes = document.querySelectorAll('.loop .node');
   const edges = document.querySelectorAll('.loop .edge');
@@ -1081,11 +1120,11 @@ addEventListener('keydown', e => { if (e.key === 'Escape') lb.classList.remove('
 })();
 
 
-// FID chart
+// YOLO pass-rate chart
 (function(){
   const el = document.getElementById('fidChart');
-  const max = Math.max(...FID_DATA.map(d => d.value || 0), 1);
-  FID_DATA.forEach(d => {
+  const max = 100;
+  PASS_RATE_DATA.forEach(d => {
     const w = d.value == null ? 0 : (d.value / max * 100);
     el.insertAdjacentHTML('beforeend',
       `<div class="bar-row"><span>${d.label}</span><div class="bar-track"><div class="bar" style="width:${w}%"></div></div><span class="val">${d.value ?? '—'}</span></div>`);
@@ -1105,10 +1144,10 @@ const TIMELINE = {
       { s:1, e:4, sem:'s1', t:'Explore alternative models', pts:['Migrate LoRA training to Kohya_ss','Realistic Vision 5.1: txt2img vs img2img','FLUX deferred (hardware limits)'] },
       { s:5, e:6.5, sem:'s2', planned:true, t:'Finalise & optimise model', pts:['Lock in the base model','Tune LoRA rank, learning rate and steps'] } ] },
     { label: 'Architecture & agent', items: [
-      { s:2, e:4.5, sem:'s1', t:'Design AgentHPO architecture', pts:['Define agent roles and the control loop','Draft the evaluation matrix (acceptable vs unacceptable)','Propose deployment options: centralised web vs local desktop','Set end-of-project goals'] },
+      { s:2, e:4.5, sem:'s1', t:'Design AgentHPO architecture', pts:['Define agent roles and the control loop','Design the YOLO-based Evaluator and verdict thresholds','Propose deployment options: centralised web vs local desktop','Set end-of-project goals'] },
       { s:5, e:7.5, sem:'s2', planned:true, t:'Build the agents', pts:['Recommender, Config Validator, Evaluator, Decision','Budget enforcement and run logging','Connect to the training pipeline'] } ] },
     { label: 'Evaluation & validation', items: [
-      { s:5.5, e:7, sem:'s2', planned:true, t:'Baselines & evaluation pipeline', pts:['Real-only baseline: recall, precision, FPR','Reproduce the previous-workflow dataset','FID, LPIPS, diversity and memorisation scoring'] },
+      { s:5.5, e:7, sem:'s2', planned:true, t:'Baselines & evaluation pipeline', pts:['Real-only baseline: recall, precision, FPR','Reproduce the previous-workflow dataset','Train and check the YOLO judge on real images'] },
       { s:7, e:8.5, sem:'s2', planned:true, t:'Three-way validation', pts:['Generate the agent-optimised dataset','Compare real-only vs previous vs agent-optimised','Iterate on the agent based on results'] } ] },
     { label: 'App & reporting', items: [
       { s:6.5, e:8.5, sem:'s2', planned:true, t:'App integration & reports', pts:['AgentHPO option in the AITK web app','Per-run experiment report with keep/reject recommendation','Human approval step'] } ] },
